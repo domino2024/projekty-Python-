@@ -1,0 +1,300 @@
+from flask import Flask, session, request, redirect, render_template_string, Response
+import random
+from datetime import datetime, timedelta
+from collections import Counter
+
+try:
+    import matplotlib.pyplot as plt
+    import io
+    import base64
+    MATPLOTLIB_OK = True
+except ImportError:
+    MATPLOTLIB_OK = False
+
+app = Flask(__name__)
+app.secret_key = "tajny_klucz"
+
+historia_losowan = []
+
+HTML_START = """
+<!doctype html>
+<html lang='pl'>
+<head><meta charset='utf-8'><title>Lotto</title></head>
+<body>
+<h1>🎟️ Lotto – Wybierz liczbę kuponów</h1>
+<form method='post'>
+    <input type='number' name='liczba' min='1' max='10' required>
+    <button type='submit'>Dalej</button>
+</form>
+<form method='get' action='/symulacja'>
+    <label>🎯 Symulacja 100 gier – liczba kuponów:</label>
+    <input type='number' name='kupony' min='1' max='10' value='1'>
+    <button type='submit'>Symuluj</button>
+</form>
+</body>
+</html>
+"""
+
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        liczba = int(request.form["liczba"])
+        session["kupony"] = liczba
+        return redirect("/gra")
+    return HTML_START
+
+@app.route("/symulacja")
+def symulacja():
+    liczba_kuponow = int(request.args.get("kupony", 1))
+    kupony = [sorted(random.sample(range(1, 50), 6)) for _ in range(liczba_kuponow)]
+    statystyki = {"3": 0, "4": 0, "5": 0, "6": 0}
+    suma_wygranych = 0
+    kumulacja = random.randint(5_000_000, 25_000_000)
+
+    for _ in range(100):
+        los = sorted(random.sample(range(1, 50), 6))
+        for kupon in kupony:
+            trafione = set(kupon) & set(los)
+            liczba = len(trafione)
+            nagrody = {0: 0, 1: 10, 2: 20, 3: 50, 4: 200, 5: 5000, 6: kumulacja}
+            wygrana = nagrody.get(liczba, 0)
+            suma_wygranych += wygrana
+            if str(liczba) in statystyki:
+                statystyki[str(liczba)] += 1
+
+    html = f"""
+    <h1>🧪 Symulacja 100 gier ({liczba_kuponow} kuponów)</h1>
+    <p>Średnia wygrana na grę: {suma_wygranych / 100:.2f} zł</p>
+    <p>Średnia wygrana na kupon: {suma_wygranych / (100 * liczba_kuponow):.2f} zł</p>
+    <ul>
+        <li>3 trafienia: {statystyki['3']}x</li>
+        <li>4 trafienia: {statystyki['4']}x</li>
+        <li>5 trafień: {statystyki['5']}x</li>
+        <li>6 trafień: {statystyki['6']}x</li>
+    </ul>
+    <a href='/'>⬅️ Powrót</a>
+    """
+    return html
+
+@app.route("/gra", methods=["GET", "POST"])
+def gra():
+    n = session.get("kupony", 1)
+    if request.method == "POST":
+        for i in range(n):
+            wybrane = request.form.getlist(f"kupon{i}")
+            if len(wybrane) == 6:
+                session[f"kupon_{i}"] = list(map(int, wybrane))
+        return redirect("/losuj")
+    return render_template_string(HTML_GRA, n=n)
+
+HTML_GRA = """
+<!doctype html>
+<html lang='pl'>
+<head><meta charset='utf-8'><title>Kupony</title>
+<style>
+.kupon { border:1px solid #ccc; margin:10px; padding:10px; }
+.numer { display:inline-block; width:30px; text-align:center; }
+</style>
+</head>
+<body>
+<h1>🧾 Wybierz liczby do {{n}} kuponów</h1>
+<form method='post' action='/gra' onsubmit='return validateAllKupony()'>
+{% for k in range(n) %}
+<div class='kupon'>
+    <h3>Kupon {{k+1}}</h3>
+    {% for i in range(1, 50) %}
+        <label class='numer'>
+            <input type='checkbox' name='kupon{{k}}' value='{{i}}' class='kupon-checkbox' data-kupon='{{k}}'> {{i}}
+        </label>
+        {% if i % 10 == 0 %}<br>{% endif %}
+    {% endfor %}
+</div>
+{% endfor %}
+<button type='submit'>🎱 Losuj</button>
+</form>
+<script>
+function validateAllKupony() {
+    let n = {{n}};
+    for (let i = 0; i < n; i++) {
+        let selected = document.querySelectorAll("input[data-kupon='" + i + "']:checked");
+        if (selected.length !== 6) {
+            alert("Kupon " + (i+1) + ": wybierz dokładnie 6 liczb!");
+            return false;
+        }
+    }
+    return true;
+}
+</script>
+</body>
+</html>
+"""
+
+@app.route("/losuj")
+def losuj():
+    n = session.get("kupony", 1)
+    wylosowane = sorted(random.sample(range(1, 50), 6))
+    session["wylosowane"] = wylosowane
+    session["wynik_kupony"] = []
+    trafienia_hist = session.get("trafienia_hist", [])
+    historia = session.get("historia", [])
+    kumulacja = random.randint(5_000_000, 25_000_000)
+
+    for i in range(n):
+        liczby = session.get(f"kupon_{i}", [])
+        if len(liczby) != 6:
+            continue
+        trafione = sorted(set(liczby) & set(wylosowane))
+        liczba_trafien = len(trafione)
+        nagrody = {0: 0, 1: 10, 2: 20, 3: 50, 4: 200, 5: 5000, 6: kumulacja}
+        wygrana = nagrody.get(liczba_trafien, 0)
+        session["wynik_kupony"].append({
+            "liczby": liczby,
+            "trafione": trafione,
+            "liczba": liczba_trafien,
+            "wygrana": f"{wygrana:,}".replace(",", " ")
+        })
+        trafienia_hist.append(liczba_trafien)
+
+    session["trafienia_hist"] = trafienia_hist[-60:]
+    historia.append(f"{n} kuponów – trafienia: {[k['liczba'] for k in session['wynik_kupony']]}")
+    session["historia"] = historia[-10:]
+    return render_template_string(HTML_ANIMACJA, liczby=wylosowane)
+
+HTML_ANIMACJA = """
+<!doctype html>
+<html lang="pl">
+<head><meta charset="utf-8"><title>Losowanie</title>
+<style>
+body { font-family: sans-serif; text-align: center; margin-top: 30px; }
+#misa {
+    width: 300px;
+    height: 300px;
+    border: 8px solid #555;
+    border-radius: 50%;
+    margin: 0 auto;
+    position: relative;
+    animation: spin 8s linear infinite;
+    overflow: hidden;
+}
+.kulka {
+    width: 40px;
+    height: 40px;
+    background: gold;
+    border-radius: 50%;
+    line-height: 40px;
+    text-align: center;
+    font-weight: bold;
+    position: absolute;
+}
+#wylosowane {
+    margin-top: 40px;
+}
+@keyframes spin {
+    100% { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+<h1>🎱 Losowanie kulek...</h1>
+<div id="misa"></div>
+<h2>Wylosowane:</h2>
+<div id="wylosowane"></div>
+<script>
+const wszystkie = {{ liczby|tojson }};
+const misa = document.getElementById("misa");
+const wylosowane = document.getElementById("wylosowane");
+for (let i = 0; i < wszystkie.length; i++) {
+    const el = document.createElement("div");
+    el.className = "kulka";
+    el.textContent = wszystkie[i];
+    let angle = (i / wszystkie.length) * Math.PI * 2;
+    let r = 110;
+    el.style.left = (150 + r * Math.cos(angle) - 20) + "px";
+    el.style.top = (150 + r * Math.sin(angle) - 20) + "px";
+    misa.appendChild(el);
+}
+let idx = 0;
+function losujKule() {
+    if (idx >= 6) {
+        setTimeout(() => { window.location.href = "/wyniki"; }, 2000);
+        return;
+    }
+    const val = wszystkie[idx];
+    const kulka = document.createElement("div");
+    kulka.className = "kulka";
+    kulka.textContent = val;
+    wylosowane.appendChild(kulka);
+    idx++;
+    setTimeout(losujKule, 1000);
+}
+losujKule();
+</script>
+</body>
+</html>
+"""
+
+@app.route("/wyniki")
+def wyniki():
+    wylosowane = session.get("wylosowane", [])
+    kupony = session.get("wynik_kupony", [])
+    trafienia_hist = session.get("trafienia_hist", [])
+    historia = session.get("historia", [])
+
+    statystyki = {"3": 0, "4": 0, "5": 0, "6": 0}
+    for t in trafienia_hist:
+        if str(t) in statystyki:
+            statystyki[str(t)] += 1
+
+    html = """
+    <!doctype html>
+    <html lang='pl'>
+    <head><meta charset='utf-8'><title>Wyniki</title>
+    <style>
+    .kulka {
+        display: inline-block;
+        width: 35px;
+        height: 35px;
+        line-height: 35px;
+        border-radius: 50%;
+        background: gold;
+        text-align: center;
+        font-weight: bold;
+        margin: 2px;
+        border: 2px solid #999;
+    }
+    .trafiona { background: lightgreen; }
+    </style>
+    </head>
+    <body>
+    <h1>🎱 Wylosowane liczby:</h1>
+    <div>{% for l in wylosowane %}<span class='kulka'>{{ l }}</span>{% endfor %}</div>
+    <h2>📄 Twoje kupony:</h2>
+    {% for k in kupony %}
+    <div>
+        <p><strong>Kupon {{ loop.index }}:</strong></p>
+        <div>
+            {% for liczba in k.liczby %}
+                <span class='kulka {% if liczba in k.trafione %}trafiona{% endif %}'>{{ liczba }}</span>
+            {% endfor %}
+        </div>
+        <p><strong>Trafione:</strong> {{ k.liczba }}</p>
+        <p><strong>Wygrana:</strong> {{ k.wygrana }} zł</p>
+    </div>
+    {% endfor %}
+    <h2>📊 Statystyki trafień</h2>
+    <ul>
+        {% for key, value in statystyki.items() %}<li>{{ key }} trafienia: {{ value }}x</li>{% endfor %}
+    </ul>
+    <h2>🕘 Historia</h2>
+    <ul>
+        {% for h in historia %}<li>{{ h }}</li>{% endfor %}
+    </ul>
+    <a href='/'><button>🔄 Zagraj ponownie</button></a>
+    </body>
+    </html>
+    """
+    return render_template_string(html, wylosowane=wylosowane, kupony=kupony,
+                                  statystyki=statystyki, historia=historia)
+
+if __name__ == "__main__":
+    app.run(debug=True)
