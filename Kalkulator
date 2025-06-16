@@ -1,0 +1,233 @@
+import tkinter as tk
+from tkinter import ttk
+import math
+
+class Calculator:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("Kalkulator")
+
+        self.history = []
+
+        self.entry = tk.Entry(root, width=20, font=("Arial", 24), justify='right')
+        self.entry.pack()
+
+        self.buttons_frame = tk.Frame(root)
+        self.buttons_frame.pack()
+
+        self.create_buttons()
+
+    def create_buttons(self):
+        buttons = [
+            '7', '8', '9', '/',
+            '4', '5', '6', '*',
+            '1', '2', '3', '-',
+            '0', '.', '=', '+',
+            '(', ')', 'C', '√',
+            'sin', 'cos', 'tan', '^',
+            'log', 'Równania', 'Historia', '1/x'
+        ]
+
+        row = 0
+        col = 0
+        for button in buttons:
+            action = lambda x=button: self.on_button_click(x)
+            tk.Button(self.buttons_frame, text=button, command=action, width=6, height=2).grid(row=row, column=col)
+            col += 1
+            if col > 3:
+                col = 0
+                row += 1
+
+    def on_button_click(self, value):
+        if value == '=':
+            try:
+                expression = self.entry.get()
+                result = eval(expression)
+                correct_result = self.calculate_correct_result(expression)
+                self.history.append(f"{expression} = {result} (Poprawny wynik: {correct_result})")
+                self.entry.delete(0, tk.END)
+                self.entry.insert(tk.END, str(correct_result))
+            except:
+                self.entry.delete(0, tk.END)
+                self.entry.insert(tk.END, "Błąd")
+        elif value == 'C':
+            self.entry.delete(0, tk.END)
+        elif value == 'Równania':
+            self.open_equation_solver()
+        elif value == 'Historia':
+            self.show_history()
+        elif value == '√':
+            self.calculate_sqrt()
+        elif value == 'log':
+            self.calculate_log()
+        elif value == 'sin':
+            self.calculate_trig('sin')
+        elif value == 'cos':
+            self.calculate_trig('cos')
+        elif value == 'tan':
+            self.calculate_trig('tan')
+        elif value == '^':
+            self.entry.insert(tk.END, '**')
+        elif value == '1/x':
+            self.calculate_inverse()
+        else:
+            self.entry.insert(tk.END, value)
+
+    def calculate_correct_result(self, expression):
+        try:
+            return eval(expression)
+        except Exception as e:
+            return f"Błąd: {e}"
+
+    def calculate_sqrt(self):
+        try:
+            expression = self.entry.get()
+            result = math.sqrt(float(expression))
+            self.history.append(f"√{expression} = {result}")
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, str(result))
+        except:
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, "Błąd")
+
+    def calculate_log(self):
+        try:
+            expression = self.entry.get()
+            result = math.log10(float(expression))
+            self.history.append(f"log({expression}) = {result}")
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, str(result))
+        except:
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, "Błąd")
+
+    def calculate_trig(self, func):
+        try:
+            expression = self.entry.get()
+            degrees = float(expression)
+            radians = math.radians(degrees)
+            if func == 'sin':
+                result = math.sin(radians)
+                self.history.append(f"sin({degrees}°) = {result}")
+            elif func == 'cos':
+                result = math.cos(radians)
+                self.history.append(f"cos({degrees}°) = {result}")
+            elif func == 'tan':
+                result = math.tan(radians)
+                self.history.append(f"tan({degrees}°) = {result}")
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, str(result))
+        except:
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, "Błąd")
+
+    def calculate_inverse(self):
+        try:
+            expression = self.entry.get()
+            value = float(expression)
+            result = 1 / value
+            self.history.append(f"1/{value} = {result}")
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, str(result))
+        except:
+            self.entry.delete(0, tk.END)
+            self.entry.insert(tk.END, "Błąd")
+
+    def open_equation_solver(self):
+        eq_window = tk.Toplevel(self.root)
+        eq_window.title("Równania kwadratowe i liniowe")
+
+        def parse_entry(entry):
+            try:
+                return float(entry.get().replace(',', '.'))
+            except:
+                return None
+
+        def solve_linear():
+            a = parse_entry(entry_a)
+            b = parse_entry(entry_b)
+            c = parse_entry(entry_c)
+
+            if None in (a, b, c):
+                result_label.config(text="Podaj wszystkie współczynniki!")
+                return
+
+            if a == 0:
+                if b == c:
+                    result_label.config(text="Nieskończenie wiele rozwiązań")
+                    self.history.append(f"Liniowe: 0x + {b} = {c} → nieskończenie wiele rozwiązań")
+                else:
+                    result_label.config(text="Brak rozwiązań")
+                    self.history.append(f"Liniowe: 0x + {b} = {c} → brak rozwiązań")
+            else:
+                x = (c - b) / a
+                result_label.config(text=f"x = {x:.4f}")
+                self.history.append(f"Liniowe: {a}x + {b} = {c} → x = {x:.4f}")
+
+        def solve_quadratic():
+            a = parse_entry(entry_a)
+            b = parse_entry(entry_b)
+            c = parse_entry(entry_c)
+
+            if None in (a, b, c):
+                result_label.config(text="Podaj wszystkie współczynniki!")
+                return
+
+            if a == 0:
+                result_label.config(text="To nie jest równanie kwadratowe (a=0)")
+                return
+
+            delta = b**2 - 4*a*c
+
+            if delta > 0:
+                x1 = (-b + math.sqrt(delta)) / (2*a)
+                x2 = (-b - math.sqrt(delta)) / (2*a)
+                result_label.config(
+                    text=f"Δ = {delta:.2f}\nx1 = {x1:.4f}\nx2 = {x2:.4f}"
+                )
+                self.history.append(
+                    f"Kwadratowe: {a}x² + {b}x + {c} = 0 → Δ={delta:.2f}, x1={x1:.4f}, x2={x2:.4f}"
+                )
+            elif delta == 0:
+                x = -b / (2*a)
+                result_label.config(
+                    text=f"Δ = 0\nx = {x:.4f}"
+                )
+                self.history.append(f"Kwadratowe: {a}x² + {b}x + {c} = 0 → Δ=0, x={x:.4f}")
+            else:
+                result_label.config(text=f"Δ = {delta:.2f}\nBrak pierwiastków rzeczywistych")
+                self.history.append(f"Kwadratowe: {a}x² + {b}x + {c} = 0 → Δ={delta:.2f}, brak rozwiązań")
+
+        # Interfejs
+        tk.Label(eq_window, text="a:").grid(row=0, column=0)
+        entry_a = tk.Entry(eq_window)
+        entry_a.grid(row=0, column=1)
+
+        tk.Label(eq_window, text="b:").grid(row=1, column=0)
+        entry_b = tk.Entry(eq_window)
+        entry_b.grid(row=1, column=1)
+
+        tk.Label(eq_window, text="c:").grid(row=2, column=0)
+        entry_c = tk.Entry(eq_window)
+        entry_c.grid(row=2, column=1)
+
+        tk.Button(eq_window, text="Rozwiąż liniowe", command=solve_linear).grid(row=3, column=0)
+        tk.Button(eq_window, text="Rozwiąż kwadratowe", command=solve_quadratic).grid(row=3, column=1)
+
+        result_label = tk.Label(eq_window, text="Wynik:", justify="left", font=("Arial", 12))
+        result_label.grid(row=4, column=0, columnspan=2, pady=10)
+
+    def show_history(self):
+        history_window = tk.Toplevel(self.root)
+        history_window.title("Historia")
+
+        history_listbox = tk.Listbox(history_window, width=50, height=20)
+        history_listbox.pack()
+
+        for record in self.history:
+            history_listbox.insert(tk.END, record)
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = Calculator(root)
+    root.mainloop()
