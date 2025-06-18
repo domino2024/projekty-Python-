@@ -1,0 +1,204 @@
+from flask import Flask, render_template_string, request, redirect, url_for
+import random
+from collections import Counter
+
+app = Flask(__name__)
+
+# Talia kart
+suits = ['♥', '♦', '♣', '♠']
+values = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+
+points_table = {
+    "Poker": 100,
+    "Kareta": 80,
+    "Full": 60,
+    "Kolor": 50,
+    "Strit": 40,
+    "Trójka": 30,
+    "Dwie pary": 20,
+    "Para": 10,
+    "Nic": 0
+}
+
+template = """
+<!doctype html>
+<html>
+<head>
+    <title>Poker – wybierz 10 kart</title>
+    <style>
+        body { font-family: Arial; background: #006400; color: #fff; text-align: center; }
+        select, button { font-size: 16px; margin: 5px; padding: 6px; }
+        .card-group { margin-top: 15px; }
+
+
+
+    </style>
+</head>
+<body>
+    <h1>Gra w Pokera – Wybierz 10 kart</h1>
+    <form method="POST">
+        {% for i in range(10) %}
+            <select name="manual_card_{{ i }}">
+                {% for v in values %}
+                    {% for s in suits %}
+                        <option value="{{ v }}{{ s }}">{{ v }}{{ s }}</option>
+                    {% endfor %}
+                {% endfor %}
+            </select><br>
+        {% endfor %}
+        <button type="submit">Zagraj</button>
+    </form>
+
+    {% if rounds %}
+        <h2>Wyniki rund:</h2>
+        {% for r in rounds %}
+            <div class="card-group">
+                <strong>Runda {{ loop.index }}</strong><br>
+                {{ r.player_hand }}
+                Układ: {{ r.player_result }} – Punkty: {{ r.player_points }}<br>
+                {{ r.ai_hand }}
+                Układ AI: {{ r.ai_result }} – Punkty: {{ r.ai_points }}<br><hr>
+            </div>
+        {% endfor %}
+
+        <h3>Podsumowanie</h3>
+        <p>Twoje punkty: {{ total_player_points }}<br>
+        Punkty AI: {{ total_ai_points }}</p>
+        <h2>
+            {% if total_player_points > total_ai_points %}✅ Wygrałeś!
+            {% elif total_player_points < total_ai_points %}❌ Przegrałeś!
+            {% else %}🔄 Remis!
+            {% endif %}
+        </h2>
+    {% endif %}
+</body>
+</html>"""
+
+
+def generate_deck():
+    return [f"{v}{s}" for v in values for s in suits]
+
+
+def evaluate_hand(hand):
+    vals = [card[:-1] for card in hand]
+    val_counts = {v: vals.count(v) for v in vals}
+    count_vals = sorted(val_counts.values(), reverse=True)
+
+    if count_vals == [4, 1]: return "Kareta"
+    if count_vals == [3, 2]: return "Full"
+    if count_vals == [3, 1, 1]: return "Trójka"
+    if count_vals == [2, 2, 1]: return "Dwie pary"
+    if count_vals == [2, 1, 1, 1]: return "Para"
+
+    suits_set = {card[-1] for card in hand}
+    is_flush = len(suits_set) == 1
+
+    val_indices = sorted([values.index(v) for v in vals])
+    is_straight = all([val_indices[i] - val_indices[i - 1] == 1 for i in range(1, 5)])
+
+    if is_straight and is_flush: return "Poker"
+    if is_flush: return "Kolor"
+    if is_straight: return "Strit"
+
+    return "Nic"
+
+
+def ai_strategy(hand, deck):
+    vals = [card[:-1] for card in hand]
+    suits_in_hand = [card[-1] for card in hand]
+    val_counts = Counter(vals)
+    suit_counts = Counter(suits_in_hand)
+
+    # Zachowaj pary i lepsze
+    keep_vals = {v for v, c in val_counts.items() if c >= 2}
+    keep_cards = [card for card in hand if card[:-1] in keep_vals]
+
+    # Szukaj czterech kart do koloru
+    for suit, count in suit_counts.items():
+        if count == 4:
+            keep_cards += [card for card in hand if card[-1] == suit and card not in keep_cards]
+            break
+
+    # Szukaj czterech do strita
+    val_indices = sorted(set(values.index(v) for v in vals))
+    for i in range(len(val_indices) - 3):
+        seq = val_indices[i:i + 4]
+        if all(seq[j] - seq[j - 1] == 1 for j in range(1, 4)):
+            keep_cards += [card for card in hand if values.index(card[:-1]) in seq and card not in keep_cards]
+            break
+
+    # Dobierz brakujące
+    new_hand = keep_cards[:]
+    needed = 5 - len(new_hand)
+    while needed > 0 and deck:
+        candidate = deck.pop()
+        if candidate not in new_hand:
+            new_hand.append(candidate)
+            needed -= 1
+    return new_hand
+
+
+@app.route('/', methods=['GET', 'POST'])
+def poker():
+    if request.method == 'POST':
+        player_hand = [request.form.get(f'manual_card_{i}') for i in range(10)]
+        deck = generate_deck()
+        for card in player_hand:
+            if card in deck:
+                deck.remove(card)
+        random.shuffle(deck)
+
+        ai_hand = []
+        while len(ai_hand) < 10:
+            card = deck.pop()
+            ai_hand.append(card)
+
+        combined = player_hand + ai_hand
+        random.shuffle(combined)
+        player_hand = combined[:10]
+        ai_hand = combined[10:]
+
+        rounds = []
+        total_player_points = 0
+        total_ai_points = 0
+
+        for i in range(0, 10, 5):
+            player_sub = player_hand[i:i + 5]
+            ai_sub = ai_hand[i:i + 5]
+
+            ai_sub = ai_strategy(ai_sub, deck)  # AI ulepsza rękę
+
+            player_result = evaluate_hand(player_sub)
+            ai_result = evaluate_hand(ai_sub)
+            player_points = points_table[player_result]
+            ai_points = points_table[ai_result]
+
+            total_player_points += player_points
+            total_ai_points += ai_points
+
+            rounds.append({
+                'player_hand': player_sub,
+                'player_result': player_result,
+                'player_points': player_points,
+                'ai_hand': ai_sub,
+                'ai_result': ai_result,
+                'ai_points': ai_points
+            })
+
+        return render_template_string(template,
+                                      rounds=rounds,
+                                      total_player_points=total_player_points,
+                                      total_ai_points=total_ai_points,
+                                      values=values,
+                                      suits=suits)
+
+    return render_template_string(template,
+                                  rounds=None,
+                                  total_player_points=0,
+                                  total_ai_points=0,
+                                  values=values,
+                                  suits=suits)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
