@@ -1,0 +1,204 @@
+from flask import Flask, request, redirect, url_for, session
+
+app = Flask(__name__)
+app.secret_key = 'tajny_klucz'
+
+sizes = {
+    "mała": {"cm": 32, "base_price": 20},
+    "średnia": {"cm": 46, "base_price": 24},
+    "duża": {"cm": 60, "base_price": 29}
+}
+
+menu = [
+    {"id": 1, "name": "Margherita", "ingredients": ["sos pomidorowy", "ser"]},
+    {"id": 2, "name": "Pepperoni", "ingredients": ["sos pomidorowy", "ser", "pepperoni"]},
+    {"id": 3, "name": "Hawajska", "ingredients": ["sos pomidorowy", "ser", "szynka", "ananas"]},
+    {"id": 4, "name": "Capricciosa", "ingredients": ["sos pomidorowy", "ser", "szynka", "pieczarki"]},
+    {"id": 5, "name": "Vegetariana", "ingredients": ["sos pomidorowy", "ser", "papryka", "cebula", "oliwki"]},
+    {"id": 6, "name": "Diavola", "ingredients": ["sos pomidorowy", "ser", "salami", "chili"]},
+    {"id": 7, "name": "Funghi", "ingredients": ["sos pomidorowy", "ser", "pieczarki"]},
+    {"id": 8, "name": "Quattro Formaggi", "ingredients": ["mozzarella", "gorgonzola", "parmezan", "ricotta"]},
+    {"id": 9, "name": "Prosciutto", "ingredients": ["sos pomidorowy", "ser", "szynka parmeńska"]},
+    {"id": 10, "name": "Tonno", "ingredients": ["sos pomidorowy", "ser", "tuńczyk", "cebula"]},
+    {"id": 11, "name": "BBQ Chicken", "ingredients": ["sos BBQ", "kurczak", "ser", "cebula", "kukurydza"]},
+    {"id": 12, "name": "Mexicana", "ingredients": ["sos pomidorowy", "ser", "fasola", "jalapeño", "wołowina"]},
+    {"id": 13, "name": "Salami", "ingredients": ["sos pomidorowy", "ser", "salami"]},
+    {"id": 14, "name": "Spinaci", "ingredients": ["sos śmietanowy", "szpinak", "feta", "czosnek"]},
+    {"id": 15, "name": "Carbonara", "ingredients": ["sos śmietanowy", "bekon", "ser", "jajko"]},
+    {"id": 16, "name": "Frutti di Mare", "ingredients": ["sos pomidorowy", "ser", "krewetki", "kalmary", "małże"]},
+    {"id": 17, "name": "Cztery Pory Roku", "ingredients": ["sos pomidorowy", "ser", "szynka", "grzyby", "karczochy", "oliwki"]},
+    {"id": 18, "name": "Parmigiana", "ingredients": ["sos pomidorowy", "bakłażan", "parmezan", "bazylia"]},
+    {"id": 19, "name": "Boscaiola", "ingredients": ["sos pomidorowy", "ser", "grzyby", "boczek"]},
+    {"id": 20, "name": "Calzone", "ingredients": ["sos pomidorowy", "ser", "szynka", "pieczarki"]}
+]
+
+STYLE = """
+<style>
+    body { background-color: white; color: red; font-family: Arial; padding: 20px; }
+    h1, h2 { color: red; }
+    .form { margin-bottom: 20px; }
+    .button { background-color: red; color: white; padding: 5px 15px; border: none; cursor: pointer; }
+    .button:hover { background-color: darkred; }
+    .order { border-top: 2px solid red; margin-top: 30px; padding-top: 20px; }
+</style>
+"""
+
+def calculate_price(pizza, size_key):
+    base = sizes[size_key]["base_price"]
+    return base + len(pizza["ingredients"])
+
+@app.route('/', methods=['GET', 'POST'])
+def index():
+    if "order" not in session:
+        session["order"] = []
+    if "client" not in session:
+        session["client"] = {}
+    if "history" not in session:
+        session["history"] = []
+
+    if request.method == 'POST':
+        if "pizza_id" in request.form:
+            try:
+                pizza_id = int(request.form.get("pizza_id"))
+                size = request.form.get("size")
+                session["order"].append({"id": pizza_id, "size": size})
+                session.modified = True
+            except Exception:
+                pass
+        else:
+            session["client"] = {
+                "name": request.form.get("name"),
+                "phone": request.form.get("phone"),
+                "email": request.form.get("email"),
+                "address": request.form.get("address"),
+                "method": request.form.get("method"),
+                "date": request.form.get("date"),
+                "time": request.form.get("time")
+            }
+            session.modified = True
+
+    html = STYLE
+    html += "<h1>🍕 Zamów pizzę</h1>"
+
+    if not session.get("completed"):
+        html += "<form method='POST' class='form'>"
+        html += "<label for='pizza_id'>Wybierz pizzę:</label><br>"
+        html += "<select name='pizza_id' id='pizza_id'>"
+        for pizza in menu:
+            html += f"<option value='{pizza['id']}'>{pizza['name']} ({', '.join(pizza['ingredients'])})</option>"
+        html += "</select><br><br>"
+
+        html += "<label for='size'>Wybierz rozmiar:</label><br>"
+        for size_key, info in sizes.items():
+            html += (
+                f"<input type='radio' name='size' value='{size_key}' required> "
+                f"{size_key.capitalize()} ({info['cm']} cm – {info['base_price']} zł + składniki)<br>"
+            )
+        html += "<br><button type='submit' class='button'>Dodaj do zamówienia</button>"
+        html += "</form>"
+
+    html += "<div class='order'><h2>🧾 Twoje zamówienie</h2>"
+    if not session["order"]:
+        html += "<p>Brak pozycji w zamówieniu.</p>"
+    else:
+        total = 0
+        html += "<ul>"
+        for item in session["order"]:
+            pizza_id = item["id"]
+            size = item["size"]
+            pizza = next((p for p in menu if p["id"] == pizza_id), None)
+            if not pizza:
+                continue
+            price = calculate_price(pizza, size)
+            size_cm = sizes[size]["cm"]
+            total += price
+            html += (
+                f"<li><strong>{pizza['name']}</strong> – {size} ({size_cm} cm) – {price} zł<br>"
+                f"Składniki: {', '.join(pizza['ingredients'])}</li><br>"
+            )
+        html += "</ul>"
+        html += f"<p><strong>Suma do zapłaty:</strong> {total} zł</p>"
+
+        if not session.get("completed"):
+            html += "<h2>📱 Dane kontaktowe</h2>"
+            html += "<form method='POST'>"
+            html += "Imię i nazwisko:<br><input name='name' required><br>"
+            html += "Telefon:<br><input name='phone' required><br>"
+            html += "E-mail:<br><input name='email'><br>"
+            html += "Adres (jeśli dostawa):<br><input name='address'><br><br>"
+            html += "Metoda:<br>"
+            html += "<input type='radio' name='method' value='Dostawa' required> Dostawa<br>"
+            html += "<input type='radio' name='method' value='Odbiór osobisty' required> Odbiór osobisty<br><br>"
+            html += "🗓 Data:<br><input type='date' name='date' required><br>"
+            html += "🕒 Godzina:<br><input type='time' name='time' required><br><br>"
+            html += "<button type='submit' class='button'>Zapisz dane</button>"
+            html += "</form>"
+
+        if session["client"]:
+            c = session["client"]
+            html += "<h3>📌 Podsumowanie:</h3>"
+            html += f"<p><strong>{c['name']}</strong><br>"
+            html += f"📞 {c['phone']}<br>"
+            html += f"📧 {c['email']}<br>"
+            html += f"📍 {c['address']}<br>"
+            html += f"🚚 Sposób: {c['method']}<br>"
+            html += f"🗓 {c['date']} – 🕒 {c['time']}</p>"
+
+        if not session.get("completed"):
+            html += "<a href='/clear' class='button'>🗑️ Wyczyść</a><br><br>"
+            html += "<a href='/complete' class='button'>✅ Zamówienie zrealizowane</a>"
+        else:
+            html += "<p><strong>✅ Zamówienie zostało zrealizowane.</strong></p>"
+            html += "<a href='/restart' class='button'>🔄 Złóż kolejne zamówienie</a>"
+    html += "</div>"
+
+    if session.get("history"):
+        html += "<div class='order'><h2>📜 Historia zamówień</h2>"
+        for idx, entry in enumerate(reversed(session["history"]), 1):
+            order = entry["order"]
+            client = entry["client"]
+            html += f"<h3>🧾 Zamówienie #{idx}</h3><ul>"
+            total = 0
+            for item in order:
+                pizza_id = item["id"]
+                size = item["size"]
+                pizza = next((p for p in menu if p["id"] == pizza_id), None)
+                if pizza:
+                    price = calculate_price(pizza, size)
+                    size_cm = sizes[size]["cm"]
+                    total += price
+                    html += f"<li>{pizza['name']} – {size} ({size_cm} cm) – {price} zł</li>"
+            html += "</ul>"
+            html += f"<p><strong>Suma:</strong> {total} zł<br>"
+            html += f"{client['name']} ({client['phone']}) – {client['method']} {client['date']} {client['time']}</p><hr>"
+        html += "</div>"
+
+    return html
+
+@app.route('/clear')
+def clear():
+    session.pop("order", None)
+    session.pop("client", None)
+    session.pop("completed", None)
+    return redirect(url_for('index'))
+
+@app.route('/complete')
+def complete():
+    if "order" in session and "client" in session:
+        session["history"].append({
+            "order": session["order"],
+            "client": session["client"]
+        })
+        session.modified = True
+    session["completed"] = True
+    return redirect(url_for("index"))
+
+@app.route('/restart')
+def restart():
+    session.pop("order", None)
+    session.pop("client", None)
+    session.pop("completed", None)
+    return redirect(url_for("index"))
+
+if __name__ == '__main__':
+    app.run(debug=True)
