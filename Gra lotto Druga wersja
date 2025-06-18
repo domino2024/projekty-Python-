@@ -1,0 +1,49 @@
+import random
+import time
+
+# Pobieranie liczb od użytkownika
+mojeLiczby = set()
+print("Witaj w grze Lotto! Podaj 6 różnych liczb z zakresu 1–49.")
+while len(mojeLiczby) < 6:
+    try:
+        liczba = int(input(f"Podaj liczbę #{len(mojeLiczby)+1}: "))
+        if liczba < 1 or liczba > 49:
+            print("Liczba musi być z zakresu 1–49.")
+        elif liczba in mojeLiczby:
+            print("Ta liczba została już podana.")
+        else:
+            mojeLiczby.add(liczba)
+    except ValueError:
+        print("To nie jest poprawna liczba. Spróbuj ponownie.")
+
+# Losowanie liczb Lotto
+listaLotto = list(range(1, 50))
+wylosowane = []
+
+time.sleep(2)
+print("\nKomora maszyny losującej jest pusta...")
+time.sleep(2)
+print("Następuje zwolnienie blokady...")
+time.sleep(2)
+print("I rozpoczynamy losowanie 6 liczb...\n")
+
+for i in range(6):
+    time.sleep(1.5)
+    random.shuffle(listaLotto)
+    liczbaWylosowana = listaLotto.pop()
+    wylosowane.append(liczbaWylosowana)
+    print(f"Wylosowano liczbę: {liczbaWylosowana}")
+
+# Wyniki
+print("\nWszystkie wylosowane liczby:", sorted(wylosowane))
+print("Twoje liczby:", sorted(mojeLiczby))
+
+trafienia = set(wylosowane) & mojeLiczby
+print(f"Liczba trafień: {len(trafienia)}")
+
+if len(trafienia) == 6:
+    print("🎉 GRATULACJE! Trafiłeś 6/6 i wygrałeś główną nagrodę!")
+elif len(trafienia) > 0:
+    print("Trafione liczby:", sorted(trafienia))
+else:
+    print("Niestety, tym razem nic nie trafiłeś. Spróbuj ponownie!")
