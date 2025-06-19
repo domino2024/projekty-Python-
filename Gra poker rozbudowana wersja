@@ -1,0 +1,292 @@
+from flask import Flask, render_template_string, request, redirect, session
+import requests
+from collections import Counter
+
+app = Flask(__name__)
+app.secret_key = "tajny_klucz"
+LICZBA_KART = 10
+
+# ======== OCENA REKI ========
+
+def wartosc_karty(w):
+    mapa = {'ACE': 14, 'KING': 13, 'QUEEN': 12, 'JACK': 11}
+    return int(w) if w.isdigit() else mapa[w]
+
+def ocena_reki(karty):
+    wartosci = [k['value'] for k in karty]
+    kolory = [k['suit'] for k in karty]
+    wartosci_num = [wartosc_karty(w) for w in wartosci]
+    wartosci_num_sorted = sorted(wartosci_num)
+    licznik = Counter(wartosci_num)
+
+    highlight_codes = []
+
+    def znajdz_karty(wartosci_docelowe):
+        return [k['code'] for k in karty if wartosc_karty(k['value']) in wartosci_docelowe]
+
+    def nazwa_wartosci(v):
+        mapa = {11: 'Walet', 12: 'Dama', 13: 'Król', 14: 'As'}
+        return mapa.get(v, str(v))
+
+    def kolor_slowo(kolor):
+        return {'SPADES': 'Pik', 'HEARTS': 'Kier', 'CLUBS': 'Trefl', 'DIAMONDS': 'Karo'}.get(kolor, kolor)
+
+    if set([14, 13, 12, 11, 10]).issubset(set(wartosci_num)) and len(set(kolory)) == 1:
+        highlight_codes = znajdz_karty([14, 13, 12, 11, 10])
+        return ("Poker królewski", 10, highlight_codes)
+
+    for start in range(min(wartosci_num_sorted), max(wartosci_num_sorted) - 3):
+        strit = list(range(start, start + 5))
+        if all(w in wartosci_num for w in strit) and len(set(kolory)) == 1:
+            highlight_codes = znajdz_karty(strit)
+            return (f"Poker: {'-'.join(map(str, strit))}", 9, highlight_codes)
+
+    for w, ilosc in licznik.items():
+        if ilosc == 4:
+            highlight_codes = znajdz_karty([w])
+            return (f"Kareta: {nazwa_wartosci(w)}", 8, highlight_codes)
+
+    trojka = next((w for w, v in licznik.items() if v == 3), None)
+    para = next((w for w, v in licznik.items() if v == 2), None)
+    if trojka and para:
+        highlight_codes = znajdz_karty([trojka, para])
+        return (f"Full: {nazwa_wartosci(trojka)} i {nazwa_wartosci(para)}", 7, highlight_codes)
+
+    if len(set(kolory)) == 1:
+        highlight_codes = [k['code'] for k in karty]
+        return ("Kolor", 6, highlight_codes)
+
+    for start in range(min(wartosci_num_sorted), max(wartosci_num_sorted) - 3):
+        strit = list(range(start, start + 5))
+        if all(w in wartosci_num for w in strit):
+            highlight_codes = znajdz_karty(strit)
+            return (f"Strit od {nazwa_wartosci(start)}", 5, highlight_codes)
+
+    for w, v in licznik.items():
+        if v == 3:
+            highlight_codes = znajdz_karty([w])
+            return (f"Trójka: {nazwa_wartosci(w)}", 4, highlight_codes)
+
+    pary = [w for w, v in licznik.items() if v == 2]
+    if len(pary) == 2:
+        highlight_codes = znajdz_karty(pary)
+        return (f"Dwie pary: {nazwa_wartosci(pary[0])} i {nazwa_wartosci(pary[1])}", 3, highlight_codes)
+
+    for w, v in licznik.items():
+        if v == 2:
+            highlight_codes = znajdz_karty([w])
+            return (f"Para: {nazwa_wartosci(w)}", 2, highlight_codes)
+
+    najwyzsza = max(wartosci_num)
+    highlight_codes = znajdz_karty([najwyzsza])
+    return (f"Wysoka karta: {nazwa_wartosci(najwyzsza)}", 1, highlight_codes)
+
+def losuj_karte():
+    res = requests.get("https://deckofcardsapi.com/api/deck/new/draw/?count=2")
+    cards = res.json()['cards']
+    return cards[0], cards[1]
+
+# ======== HTML SZABLON ========
+
+HTML = """
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+  body { background-color: #006400; color: white; font-family: 'Segoe UI', sans-serif; text-align: center; }
+  .stol { display: flex; flex-direction: column; align-items: center; margin-top: 20px; }
+  .rząd-kart { display: flex; justify-content: center; gap: 10px; margin: 5px 0; }
+  .karta-box { background: #004000; padding: 8px; border-radius: 8px; }
+  .highlight { border: 3px solid gold; border-radius: 8px; }
+  button { background-color: #ffcc00; border: none; padding: 10px 20px; font-size: 16px; border-radius: 8px; cursor: pointer; margin-top: 20px; }
+</style>
+</head>
+<body>
+  <h1>🃏 Poker {{ LICZBA_KART }}-kartowy – Ty vs AI</h1>
+  <h3>Runda: {{ runda }}/10</h3>
+
+  {% if not karty_gracza %}
+  <form method="POST" action="/draw">
+    <button>Rozdaj karty</button>
+  </form>
+  {% endif %}
+
+  {% if karty_gracza and not po_wymianie %}
+  <form method="POST" action="/exchange">
+    <div class="stol">
+      <h2>Twoje karty:</h2>
+      {% for karta in karty_gracza %}
+        {% if loop.index0 % 5 == 0 %}<div class="rząd-kart">{% endif %}
+        <div class="karta-box">
+          <img src="{{ karta.image }}" width="80"><br>
+          <input type="checkbox" name="keep" value="{{ loop.index0 }}"> Zatrzymaj
+        </div>
+        {% if loop.index0 % 5 == 4 or loop.last %}</div>{% endif %}
+      {% endfor %}
+      <button>Wymień niezaznaczone</button>
+    </div>
+  </form>
+  {% endif %}
+
+  {% if po_wymianie %}
+  <div class="stol">
+    <h2>Ręka AI: {{ uk_ai }}</h2>
+    {% for karta in karty_ai %}
+      {% if loop.index0 % 5 == 0 %}<div class="rząd-kart">{% endif %}
+      <img src="{{ karta.image }}" width="80" class="{% if karta.code in highlight_ai %}highlight{% endif %}">
+      {% if loop.index0 % 5 == 4 or loop.last %}</div>{% endif %}
+    {% endfor %}
+
+    <h2>Twoja ręka: {{ uk_gracza }}</h2>
+    {% for karta in karty_gracza %}
+      {% if loop.index0 % 5 == 0 %}<div class="rząd-kart">{% endif %}
+      <img src="{{ karta.image }}" width="80" class="{% if karta.code in highlight_gracza %}highlight{% endif %}">
+      {% if loop.index0 % 5 == 4 or loop.last %}</div>{% endif %}
+    {% endfor %}
+
+    <h2>{{ wynik }}</h2>
+
+    {% if session.ostatnia_wygrana %}
+    <form method="POST" action="/double">
+      <button>Zagraj o podwojenie 🃏</button>
+    </form>
+    {% endif %}
+
+    <h3>Wynik meczu: Ty {{ punkty_gracza }} : {{ punkty_ai }} AI</h3>
+
+    {% if runda < 10 %}
+    <form method="POST" action="/draw">
+      <button>Zagraj kolejną rundę</button>
+    </form>
+    {% else %}
+    <h2>KONIEC MECZU – Wynik końcowy:</h2>
+    <h3>Ty: {{ punkty_gracza }} punktów<br>AI: {{ punkty_ai }} punktów</h3>
+    {% if punkty_gracza > punkty_ai %}
+      <h2>🏆 WYGRAŁEŚ CAŁY MECZ!</h2>
+    {% elif punkty_ai > punkty_gracza %}
+      <h2>🤖 AI wygrało cały mecz!</h2>
+    {% else %}
+      <h2>🤝 Remis w meczu!</h2>
+    {% endif %}
+    <form method="POST" action="/reset">
+      <button>Zagraj od nowa</button>
+    </form>
+    {% endif %}
+  </div>
+  {% endif %}
+</body>
+</html>
+"""
+
+# ======== ROUTES ========
+
+@app.route("/")
+def index():
+    return render_template_string(HTML,
+        karty_gracza=session.get("karty_gracza"),
+        karty_ai=session.get("karty_ai"),
+        po_wymianie=session.get("po_wymianie"),
+        wynik=session.get("wynik"),
+        uk_gracza=session.get("uk_gracza"),
+        uk_ai=session.get("uk_ai"),
+        punkty_gracza=session.get("punkty_gracza", 0),
+        punkty_ai=session.get("punkty_ai", 0),
+        highlight_gracza=session.get("highlight_gracza", []),
+        highlight_ai=session.get("highlight_ai", []),
+        LICZBA_KART=LICZBA_KART,
+        runda=session.get("runda", 0)
+    )
+
+@app.route("/draw", methods=["POST"])
+def draw():
+    runda = session.get("runda", 0) + 1
+    if runda > 10:
+        return redirect("/")
+
+    res = requests.get("https://deckofcardsapi.com/api/deck/new/shuffle/?deck_count=1")
+    deck_id = res.json()["deck_id"]
+    res = requests.get(f"https://deckofcardsapi.com/api/deck/{deck_id}/draw/?count={LICZBA_KART * 2}")
+    cards = res.json()["cards"]
+    session.update({
+        "deck_id": deck_id,
+        "karty_gracza": cards[:LICZBA_KART],
+        "karty_ai": cards[LICZBA_KART:],
+        "po_wymianie": False,
+        "runda": runda
+    })
+    return redirect("/")
+
+@app.route("/exchange", methods=["POST"])
+def exchange():
+    deck_id = session["deck_id"]
+    stare_karty = session["karty_gracza"]
+    keep_indexes = [int(i) for i in request.form.getlist("keep")]
+    nowe_karty = [stare_karty[i] for i in keep_indexes]
+    ile_dobrac = LICZBA_KART - len(nowe_karty)
+    if ile_dobrac:
+        res = requests.get(f"https://deckofcardsapi.com/api/deck/{deck_id}/draw/?count={ile_dobrac}")
+        nowe_karty += res.json()["cards"]
+    session["karty_gracza"] = nowe_karty
+
+    # AI dobiera karty – jak wcześniej
+    wartosci = [wartosc_karty(k['value']) for k in session["karty_ai"]]
+    kolory = [k['suit'] for k in session["karty_ai"]]
+    licznik = Counter(wartosci)
+    zatrzymaj = [k for k in session["karty_ai"] if wartosc_karty(k['value']) in [w for w, c in licznik.items() if c > 1]]
+    if max(Counter(kolory).values()) >= 3:
+        zatrzymaj += [k for k in session["karty_ai"] if k['suit'] == Counter(kolory).most_common(1)[0][0]]
+    zatrzymaj = list({k['code']: k for k in zatrzymaj}.values())
+    ile_dobrac = LICZBA_KART - len(zatrzymaj)
+    if ile_dobrac > 0:
+        res = requests.get(f"https://deckofcardsapi.com/api/deck/{deck_id}/draw/?count={ile_dobrac}")
+        zatrzymaj += res.json()["cards"]
+    session["karty_ai"] = zatrzymaj
+
+    uk_gracza, val_gracza, highlight_gracza = ocena_reki(session["karty_gracza"])
+    uk_ai, val_ai, highlight_ai = ocena_reki(session["karty_ai"])
+    session["uk_gracza"] = uk_gracza
+    session["uk_ai"] = uk_ai
+    session["highlight_gracza"] = highlight_gracza
+    session["highlight_ai"] = highlight_ai
+
+    if val_gracza > val_ai:
+        session["wynik"] = "🏆 WYGRAŁEŚ rundę!"
+        session["punkty_gracza"] = session.get("punkty_gracza", 0) + 1
+        session["ostatnia_wygrana"] = True
+    elif val_ai > val_gracza:
+        session["wynik"] = "🤖 AI wygrało rundę!"
+        session["punkty_ai"] = session.get("punkty_ai", 0) + 1
+        session["ostatnia_wygrana"] = False
+    else:
+        session["wynik"] = "🤝 Remis!"
+        session["ostatnia_wygrana"] = False
+
+    session["po_wymianie"] = True
+    return redirect("/")
+
+@app.route("/double", methods=["POST"])
+def double():
+    if session.get("ostatnia_wygrana"):
+        karta_gracza, karta_ai = losuj_karte()
+        val_gracz = wartosc_karty(karta_gracza['value'])
+        val_ai = wartosc_karty(karta_ai['value'])
+        wynik = f"Twoja karta: {karta_gracza['value']} vs AI: {karta_ai['value']}. "
+        if val_gracz > val_ai:
+            session["punkty_gracza"] += 1
+            wynik += "✅ Wygrałeś podwójnie!"
+        elif val_ai > val_gracz:
+            session["punkty_gracza"] -= 1
+            wynik += "❌ Przegrałeś wszystko!"
+        else:
+            wynik += "🤝 Remis – punkt zostaje."
+        session["wynik"] = wynik
+        session["ostatnia_wygrana"] = False
+    return redirect("/")
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    session.clear()
+    return redirect("/")
+
+if __name__ == "__main__":
+    app.run(debug=True)
