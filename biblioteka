@@ -1,1 +1,258 @@
+from flask import Flask, request, redirect, render_template_string
+from flask_sqlalchemy import SQLAlchemy
+from abc import ABC, abstractmethod
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///library.db'
+db = SQLAlchemy(app)
+
+# === S - Single Responsibility Principle ===
+class Book(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(150), nullable=False)
+    author = db.Column(db.String(100), nullable=False)
+    category = db.Column(db.String(50), nullable=False)
+    is_borrowed = db.Column(db.Boolean, default=False)
+
+    def __repr__(self):
+        return f'<Book {self.title}>'
+
+# === O - Open/Closed Principle ===
+class BookRepository:
+    def add_book(self, book: Book):
+        db.session.add(book)
+        db.session.commit()
+
+    def list_books(self):
+        return Book.query.all()
+
+    def available_books(self):
+        return Book.query.filter_by(is_borrowed=False).all()
+
+    def get_by_title(self, title):
+        return Book.query.filter_by(title=title).first()
+
+    def get_by_id(self, book_id):
+        return Book.query.get(book_id)
+
+# === I - Interface Segregation Principle ===
+class Printable(ABC):
+    @abstractmethod
+    def format(self, book: Book) -> str:
+        pass
+
+class HTMLBookPrinter(Printable):
+    def format(self, book: Book) -> str:
+        status = "🔳 Wypożyczona" if book.is_borrowed else "🟩 Dostępna"
+        return f"<li><strong>{book.title}</strong> - {book.author} <em>({book.category})</em> [{status}]</li>"
+
+# === D - Dependency Inversion Principle ===
+class LibraryService:
+    def __init__(self, repo: BookRepository):
+        self.repo = repo
+
+    def add_new_book(self, title, author, category):
+        book = Book(title=title, author=author, category=category)
+        self.repo.add_book(book)
+
+    def get_books(self):
+        return self.repo.list_books()
+
+    def get_available_books(self):
+        return self.repo.available_books()
+
+    def borrow_book(self, title):
+        book = self.repo.get_by_title(title)
+        if book and not book.is_borrowed:
+            book.is_borrowed = True
+            db.session.commit()
+
+    def return_book(self, title):
+        book = self.repo.get_by_title(title)
+        if book and book.is_borrowed:
+            book.is_borrowed = False
+            db.session.commit()
+
+    def edit_book(self, book_id, title, author, category):
+        book = self.repo.get_by_id(book_id)
+        if book:
+            book.title = title
+            book.author = author
+            book.category = category
+            db.session.commit()
+
+# === Inicjalizacja ===
+repo = BookRepository()
+printer = HTMLBookPrinter()
+library = LibraryService(repo)
+
+# === Szablon HTML ===
+template = '''
+<!DOCTYPE html>
+<html>
+<head>
+    <title>📚 Biblioteka</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; }
+        input, select, button { margin: 5px; }
+    </style>
+</head>
+<body>
+    <h1>📚 Biblioteka</h1>
+
+    <form method="GET" action="/search" style="display:inline-block; margin-right:20px;">
+        🔠 Szukaj: <input name="q" placeholder="Tytuł...">
+        <button type="submit">Szukaj</button>
+    </form>
+
+    <form method="GET" action="/filter" style="display:inline-block;">
+        🔍 Filtruj:
+        <select name="category">
+            <option value="">--Wybierz kategorię--</option>
+            <option>Fantasy</option>
+            <option>Kryminał</option>
+            <option>Romans</option>
+            <option>Biografia</option>
+            <option>Inne</option>
+        </select>
+        <button type="submit">Filtruj</button>
+    </form>
+
+    <h2>Dodaj książkę</h2>
+    <form method="POST" action="/add">
+        Tytuł: <input name="title" required>
+        Autor: <input name="author" required>
+        Kategoria:
+        <select name="category" required>
+            <option>Fantasy</option>
+            <option>Kryminał</option>
+            <option>Romans</option>
+            <option>Biografia</option>
+            <option>Inne</option>
+        </select>
+        <button type="submit">Dodaj</button>
+    </form>
+
+    <h2>📖 Wszystkie książki</h2>
+    <ul>
+        {% for book in books %}
+            {{ printer.format(book)|safe }}
+            <form method="POST" action="/borrow" style="display:inline;">
+                <input type="hidden" name="title" value="{{ book.title }}">
+                <button type="submit">Wypożycz</button>
+            </form>
+            <form method="POST" action="/return" style="display:inline;">
+                <input type="hidden" name="title" value="{{ book.title }}">
+                <button type="submit">Zwróć</button>
+            </form>
+            <form method="GET" action="/edit/{{ book.id }}" style="display:inline;">
+                <button type="submit">Edytuj</button>
+            </form>
+            <br>
+        {% endfor %}
+    </ul>
+
+    <h2>✅ Dostępne książki</h2>
+    <ul>
+        {% for book in available_books %}
+            <li><strong>{{ book.title }}</strong> - {{ book.author }} ({{ book.category }})</li>
+        {% else %}
+            <li>Brak dostępnych książek.</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>
+'''
+
+# === Trasy ===
+@app.route("/")
+def index():
+    return render_template_string(
+        template,
+        books=library.get_books(),
+        available_books=library.get_available_books(),
+        printer=printer
+    )
+
+@app.route("/add", methods=["POST"])
+def add_book():
+    title = request.form["title"]
+    author = request.form["author"]
+    category = request.form["category"]
+    library.add_new_book(title, author, category)
+    return redirect("/")
+
+@app.route("/borrow", methods=["POST"])
+def borrow_book():
+    title = request.form["title"]
+    library.borrow_book(title)
+    return redirect("/")
+
+@app.route("/return", methods=["POST"])
+def return_book():
+    title = request.form["title"]
+    library.return_book(title)
+    return redirect("/")
+
+@app.route("/filter")
+def filter_books():
+    category = request.args.get("category")
+    filtered = Book.query.filter_by(category=category).all() if category else []
+    return render_template_string(
+        template,
+        books=filtered,
+        available_books=library.get_available_books(),
+        printer=printer
+    )
+
+@app.route("/search")
+def search_books():
+    query = request.args.get("q", "").strip()
+    results = Book.query.filter(Book.title.ilike(f"%{query}%")).all()
+    return render_template_string(
+        template,
+        books=results,
+        available_books=library.get_available_books(),
+        printer=printer
+    )
+
+@app.route("/edit/<int:book_id>", methods=["GET", "POST"])
+def edit_book(book_id):
+    book = repo.get_by_id(book_id)
+    if request.method == "POST":
+        title = request.form["title"]
+        author = request.form["author"]
+        category = request.form["category"]
+        library.edit_book(book_id, title, author, category)
+        return redirect("/")
+    return f'''
+    <h2>Edytuj książkę</h2>
+    <form method="POST">
+        Tytuł: <input name="title" value="{book.title}" required><br>
+        Autor: <input name="author" value="{book.author}" required><br>
+        Kategoria:
+        <select name="category" required>
+            <option {'selected' if book.category == 'Fantasy' else ''}>Fantasy</option>
+            <option {'selected' if book.category == 'Kryminał' else ''}>Kryminał</option>
+            <option {'selected' if book.category == 'Romans' else ''}>Romans</option>
+            <option {'selected' if book.category == 'Biografia' else ''}>Biografia</option>
+            <option {'selected' if book.category == 'Inne' else ''}>Inne</option>
+        </select><br>
+        <button type="submit">Zapisz</button>
+    </form>
+    <a href="/">&larr; Wróć</a>
+    '''
+
+# === Start aplikacji ===
+if __name__ == "__main__":
+    with app.app_context():
+        db.create_all()
+        if not Book.query.first():
+            library.add_new_book("Wiedźmin", "Andrzej Sapkowski", "Fantasy")
+            library.add_new_book("Zbrodnia i kara", "Fiodor Dostojewski", "Kryminał")
+            library.add_new_book("Duma i uprzedzenie", "Jane Austen", "Romans")
+            library.add_new_book("Steve Jobs", "Walter Isaacson", "Biografia")
+            library.add_new_book("Mały Książe", "Antoine de Saint-Exupéry", "Inne")
+
+    app.run(debug=True)
 
