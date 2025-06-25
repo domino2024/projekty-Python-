@@ -1,0 +1,660 @@
+import json
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs, urlparse
+import os
+import http.cookies as cookie
+import smtplib
+from email.mime.text import MIMEText
+from datetime import datetime
+
+
+USERS_FILE = "users.json"
+DATA_FILE = "results.json"
+
+SENDER_EMAIL = "twoje_email@gmail.com"
+SENDER_PASSWORD = "twoje_haslo_aplikacyjne"
+SMTP_SERVER = "smtp.gmail.com"
+SMTP_PORT = 587
+
+
+def load_data(filename, default):
+    """Ładowanie danych z pliku JSON."""
+    if os.path.exists(filename):
+        with open(filename, "r") as f:
+            return json.load(f)
+    return default
+
+
+def save_data(data, filename):
+    """Zapisywanie danych do pliku JSON."""
+    with open(filename, "w") as f:
+        json.dump(data, f, indent=4)
+
+
+def migrate_users(users):
+    """Migruje stary format użytkowników (string) na nowy (dict)."""
+    migrated = False
+    for email, data in list(users.items()):
+        if isinstance(data, str):  # STARY FORMAT
+            users[email] = {"password": data, "notification_email": email}
+            migrated = True
+    if migrated:
+        save_data(users, USERS_FILE)
+    return users
+
+
+def get_user_results(email):
+    """Pobiera wyniki użytkownika (automatyczna migracja)."""
+    results = load_data(DATA_FILE, {})
+    if isinstance(results, list):  # STARY FORMAT
+        save_data({email: results}, DATA_FILE)
+        return results
+    elif isinstance(results, dict):  # NOWY FORMAT
+        return results.get(email, [])
+
+
+def save_user_results(email, results_for_user):
+    """Zapisuje wyniki użytkownika."""
+    results = load_data(DATA_FILE, {})
+    if isinstance(results, list):  # STARY FORMAT
+        results = {email: results}
+    results[email] = results_for_user
+    save_data(results, DATA_FILE)
+
+
+def compute_achievements(data):
+    """Oblicza osiągnięcia użytkownika."""
+    total = sum(r["km"] for r in data)
+
+    achievements = []
+    if data:
+        achievements.append("🥇 Pierwszy trening zarejestrowany.")
+    if total >= 100:
+        achievements.append(f"🌟 Przekroczone 100 km łącznie ({total:.1f} km)!")
+    if any(r["km"] >= 50 for r in data):
+        achievements.append("🚴 Najdłuższy trening: 50 km lub więcej.")
+    if any(r["km"] >= 42 for r in data):
+        achievements.append("🏅 Pierwszy maraton (>= 42 km)!")
+    if has_100km_in_month(data):
+        achievements.append("🌟 100 km w miesiącu!")
+
+    return achievements
+
+
+def has_100km_in_month(data):
+    """Sprawdza, czy użytkownik osiągnął 100 km w miesiącu."""
+    monthly_totals = {}
+    for r in data:
+        date = datetime.strptime(r["date"], "%Y-%m-%d")
+        month_key = date.strftime("%Y-%m")
+        monthly_totals.setdefault(month_key, 0)
+        monthly_totals[month_key] += r["km"]
+
+    return any(total >= 100 for total in monthly_totals.values())
+
+
+def send_email(to_email, subject, body):
+    """Wysyła e‑mail poprzez SMTP."""
+    msg = MIMEText(body)
+    msg["Subject"] = subject
+    msg["From"] = SENDER_EMAIL
+    msg["To"] = to_email
+    with smtplib.SMTP(SMTP_SERVER, SMTP_PORT) as server:
+        server.starttls()
+        server.login(SENDER_EMAIL, SENDER_PASSWORD)
+        server.send_message(msg)
+
+
+class SimpleHandler(BaseHTTPRequestHandler):
+
+    def get_logged_in_user(self):
+        """Sprawdza ciasteczko i zwraca e‑mail użytkownika."""
+        if "Cookie" in self.headers:
+            cookie_header = cookie.SimpleCookie(self.headers["Cookie"])
+            return cookie_header.get("user_email").value if "user_email" in cookie_header else None
+        return None
+
+    def send_html(self, html):
+        """Wysyła stronę HTML do przeglądarki."""
+        self.send_response(200)
+        self.send_header("Content-type", "text/html; charset=utf-8")
+        self.end_headers()
+        self.wfile.write(html.encode("utf-8"))
+
+    def do_GET(self):
+        """GET - wyświetlanie stron."""
+        user_email = self.get_logged_in_user()
+        if user_email:
+            if self.path.startswith("/history"):
+                return self.show_history_page(user_email)
+            return self.show_main_page(user_email)
+        return self.show_login_register()
+
+    def do_POST(self):
+        """POST - logowanie/rejestracja/dodawanie km/reset danych/wylogowanie/zmiana hasła/profil/tło."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        body = self.rfile.read(content_length).decode("utf-8")
+        data = parse_qs(body)
+
+        if "logout" in data:
+            self.send_response(303)
+            self.send_header("Location", "/")
+            self.send_header("Set-Cookie", "user_email=; Path=/; Max-Age=0")
+            self.end_headers()
+            return
+
+        if "reset" in data:
+            user_email = self.get_logged_in_user()
+            save_user_results(user_email, [])
+
+        elif "register" in data:
+            email = data.get("email", [None])[0]
+            password = data.get("password", [None])[0]
+            notif_email = data.get("notif_email", [None])[0]
+            name = data.get("name", [None])[0]
+            age = data.get("age", [None])[0]
+            weight = data.get("weight", [None])[0]
+            height = data.get("height", [None])[0]
+            if email and password and notif_email and name and age and weight and height:
+                users = load_data(USERS_FILE, {})
+                users = migrate_users(users)
+                if email in users:
+                    return self.show_message("Ten e‑mail jest już zarejestrowany. Wybierz inny.")
+                users[email] = {
+                    "password": password,
+                    "notification_email": notif_email,
+                    "name": name,
+                    "age": int(age),
+                    "weight": float(weight),
+                    "height": float(height),
+                    "background": "#0D1B2A",
+                    "theme": "dark",
+                    "font_size": "16px"
+                }
+                save_data(users, USERS_FILE)
+                return self.show_message("✅ Użytkownik został zarejestrowany! <a href='/'>Kliknij tutaj aby się zalogować</a>.")
+
+        elif "email" in data and "password" in data and "new_password" in data:
+            email = data["email"][0]
+            password = data["password"][0]
+            new_password = data["new_password"][0]
+            users = load_data(USERS_FILE, {})
+            users = migrate_users(users)
+
+            if email in users and users[email]["password"] == password:
+                users[email]["password"] = new_password
+                save_data(users, USERS_FILE)
+                return self.show_message("✅ Hasło zostało zmienione! <a href='/'>Kliknij aby wrócić</a>.")
+            else:
+                return self.show_message("❌ E‑mail lub hasło niepoprawne.")
+
+        elif "update_profile" in data:
+            user_email = self.get_logged_in_user()
+            name = data.get("name", [""])[0]
+            age = data.get("age", [""])[0]
+            weight = data.get("weight", [""])[0]
+            height = data.get("height", [""])[0]
+            theme = data.get("theme", ["dark"])[0]
+            font_size = data.get("font_size", ["16px"])[0]
+            if user_email and name and age and weight and height:
+                users = load_data(USERS_FILE, {})
+                users = migrate_users(users)
+                if user_email in users:
+                    users[user_email]["name"] = name
+                    users[user_email]["age"] = int(age)
+                    users[user_email]["weight"] = float(weight)
+                    users[user_email]["height"] = float(height)
+                    users[user_email]["theme"] = theme
+                    users[user_email]["font_size"] = font_size
+                    save_data(users, USERS_FILE)
+
+                return self.show_message("✅ Profil został zaktualizowany! <a href='/'>Kliknij aby wrócić</a>.")
+
+        elif "update_background" in data:
+            user_email = self.get_logged_in_user()
+            background = data.get("background", ["#0D1B2A"])[0]
+            if user_email:
+                users = load_data(USERS_FILE, {})
+                users = migrate_users(users)
+                if user_email in users:
+                    users[user_email]["background"] = background
+                    save_data(users, USERS_FILE)
+
+            return self.show_message("✅ Kolor tła został zmieniony! <a href='/'>Kliknij aby wrócić</a>.")
+
+        elif "calculate" in data:
+            user_email = self.get_logged_in_user()
+            km = float(data.get("km_calc", [0])[0])
+            speed = float(data.get("speed", [1])[0])
+            return self.show_main_page(user_email, km_for_calc=km, speed_for_calc=speed)
+
+        elif "email" in data and "password" in data:
+            email = data["email"][0]
+            password = data["password"][0]
+            users = load_data(USERS_FILE, {})
+            users = migrate_users(users)
+
+            if email in users and users[email]["password"] == password:
+                return self.send_logged_in_redirect(email)
+            else:
+                return self.show_message("❌ E‑mail lub hasło niepoprawne.")
+
+        else:
+            km = data.get("km", [None])[0]
+            date = data.get("date", [None])[0]
+            if km and date:
+                user_email = self.get_logged_in_user()
+                results_for_user = get_user_results(user_email)
+
+                if results_for_user and results_for_user[-1]["km"] == float(km) and results_for_user[-1]["date"] == date:
+                    self.send_redirect("/")
+                    return
+
+                max_before = max([r["km"] for r in results_for_user], default=0)
+
+                results_for_user.append({"km": float(km), "date": date})
+                save_user_results(user_email, results_for_user)
+
+                if float(km) > max_before:
+                    users = load_data(USERS_FILE, {})
+                    notif_email = users.get(user_email, {}).get("notification_email")
+                    if notif_email:
+                        send_email(notif_email,
+                                   "🥇 Nowy Rekord!",
+                                   f"Gratulujemy! Twój nowy rekord dystansu to {km} km.")
+
+                # Powiadomienia o osiągnięciach
+                new_achievements = compute_achievements(results_for_user)
+                if new_achievements:
+                    for ach in new_achievements:
+                        if ach in ["🏅 Pierwszy maraton (>= 42 km)!", "🌟 100 km w miesiącu!"]:
+                            notif_email = load_data(USERS_FILE, {}).get(user_email, {}).get("notification_email")
+                            if notif_email:
+                                send_email(notif_email,
+                                           "🏆 Nowe Osiągnięcie!",
+                                           f"Gratulujemy! Zdobyłeś nowe osiągnięcie: {ach}")
+
+                self.send_redirect("/")
+                return
+
+        self.send_redirect("/")
+
+    def send_logged_in_redirect(self, email):
+        """Ustawia ciasteczko i przekierowuje na stronę główną."""
+        self.send_response(303)
+        self.send_header("Location", "/")
+        self.send_header("Set-Cookie", f"user_email={email}; Path=/")
+        self.end_headers()
+
+    def send_redirect(self, location):
+        """Proste przekierowanie."""
+        self.send_response(303)
+        self.send_header("Location", location)
+        self.end_headers()
+
+    def show_message(self, message):
+        """Wyświetla stronę z komunikatem."""
+        html = f"""
+        <html><body style="font-family: Arial; text-align: center;">
+            <h1>{message}</h1>
+        </body></html>"""
+        self.send_html(html)
+
+    def show_login_register(self):
+        """Strona logowania/rejestracji/zmiany hasła."""
+        html = """
+<html>
+<head><title>Logowanie/Rejestracja/Zmiana hasła</title></head>
+<body style="font-family: Arial, sans-serif;
+             background: linear-gradient(135deg, #0D1B2A, #1B263B);
+             color: #F0F0F0;
+             text-align: center;
+             padding: 30px;
+             margin: 0;">
+<style>
+.card {
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(12px);
+    border-radius: 15px;
+    padding: 25px;
+    margin: 20px auto;
+    max-width: 300px;
+    box-shadow: 0px 8px 25px rgba(121, 40, 202, 0.3);
+}
+h1 {
+    color: #F0F0F0;
+}
+input[type="email"],
+input[type="password"],
+input[type="text"],
+input[type="number"],
+input[type="submit"] {
+    padding: 14px;
+    font-size: 1rem;
+    margin: 5px 0;
+    width: 100%;
+    box-sizing: border-box;
+    border-radius: 12px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #F0F0F0;
+}
+input[type="submit"] {
+    background: linear-gradient(90deg, #FF0080, #7928CA);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    padding: 14px 22px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0px 0px 25px rgba(255, 0, 128, 0.5);
+    transition: 0.3s;
+}
+input[type="submit"]:hover {
+    background: linear-gradient(90deg, #7928CA, #FF0080);
+    box-shadow: 0px 0px 40px rgba(255, 0, 128, 0.7);
+    transform: translateY(-3px);
+}
+</style>
+<body>
+    <div class="card">
+        <h1>Logowanie</h1>
+        <form method="POST">
+            <input type="email" name="email" placeholder="Email" required/>
+            <input type="password" name="password" placeholder="Hasło" required/>
+            <input type="submit" value="Zaloguj">
+        </form>
+    </div>
+    <div class="card">
+        <h1>Rejestracja</h1>
+        <form method="POST">
+            <input type="email" name="email" placeholder="Email (logowanie)" required/>
+            <input type="email" name="notif_email" placeholder="Email (powiadomienia)" required/>
+            <input type="password" name="password" placeholder="Hasło" required/>
+            <input type="text" name="name" placeholder="Imię" required/>
+            <input type="number" name="age" placeholder="Wiek" required/>
+            <input type="number" step="0.1" name="weight" placeholder="Waga (kg)" required/>
+            <input type="number" step="0.1" name="height" placeholder="Wzrost (cm)" required/>
+            <input type="submit" name="register" value="Zarejestruj">
+        </form>
+    </div>
+    <div class="card">
+        <h1>Zmiana hasła</h1>
+        <form method="POST">
+            <input type="email" name="email" placeholder="Email konta" required/>
+            <input type="password" name="password" placeholder="Obecne hasło" required/>
+            <input type="password" name="new_password" placeholder="Nowe hasło" required/>
+            <input type="submit" value="Zmień hasło">
+        </form>
+    </div>
+</body>
+</html>"""
+        self.send_html(html)
+
+    def show_main_page(self, user_email, km_for_calc=0, speed_for_calc=1):
+        """Strona główna użytkownika (po zalogowaniu)."""
+        results_for_user = get_user_results(user_email)
+        total = sum(r["km"] for r in results_for_user)
+        count = len(results_for_user)
+        average = total / count if count > 0 else 0
+        achievements = compute_achievements(results_for_user)
+
+        results_html = "<ul>" + "".join(f"<li>{r['date']}: {r['km']} km</li>" for r in results_for_user) + "</ul>"
+        achievements_html = "<ul>" + "".join(f"<li>{a}</li>" for a in achievements) + "</ul>"
+
+        user_data = load_data(USERS_FILE, {})
+        user_info = user_data.get(user_email, {})
+        name = user_info.get("name", "")
+        age = user_info.get("age", "")
+        weight = user_info.get("weight", "")
+        height = user_info.get("height", "")
+        background_color = user_info.get("background", "#0D1B2A")
+        theme = user_info.get("theme", "dark")
+        font_size = user_info.get("font_size", "16px")
+
+        calories = total * (user_info.get("weight", 70) * 0.5)
+
+        calculated_calories = km_for_calc * (user_info.get("weight", 70) * 0.5)
+        estimated_time_h = km_for_calc / speed_for_calc if speed_for_calc > 0 else 0
+        estimated_time_min = estimated_time_h * 60
+        bmi = user_info.get("weight", 70) / ((user_info.get("height", 175) / 100) ** 2)
+
+        profile_form = f"""
+        <h2>👤 Profil użytkownika</h2>
+        <form method="POST">
+            <input type="text" name="name" placeholder="Imię" value="{name}" required/>
+            <input type="number" name="age" placeholder="Wiek" value="{age}" required/>
+            <input type="number" step="0.1" name="weight" placeholder="Waga (kg)" value="{weight}" required/>
+            <input type="number" step="0.1" name="height" placeholder="Wzrost (cm)" value="{height}" required/>
+            <select name="theme">
+                <option value="dark" {"selected" if theme == "dark" else ""}>Ciemny</option>
+                <option value="light" {"selected" if theme == "light" else ""}>Jasny</option>
+            </select>
+            <select name="font_size">
+                <option value="14px" {"selected" if font_size == "14px" else ""}>Mała czcionka</option>
+                <option value="16px" {"selected" if font_size == "16px" else ""}>Standard</option>
+                <option value="18px" {"selected" if font_size == "18px" else ""}>Duża czcionka</option>
+            </select>
+            <input type="submit" name="update_profile" value="Zapisz Profil">
+        </form>
+        <p>Szacowana ilość kcal: <strong>{calories:.1f}</strong> kcal</p>
+        <h2>🎨 Wybierz kolor tła</h2>
+        <form method="POST">
+            <input type="color" id="bg-picker" value="{background_color}" />
+            <input type="text" id="bg-text" name="background" value="{background_color}" placeholder="#0D1B2A" />
+            <input type="submit" name="update_background" value="Zapisz kolor">
+        </form>
+        <script>
+            const colorInput = document.getElementById('bg-picker');
+            const textInput = document.getElementById('bg-text');
+            colorInput.addEventListener('input', (event) => {{
+                textInput.value = event.target.value;
+                document.body.style.background = event.target.value;
+            }});
+            textInput.addEventListener('input', (event) => {{
+                const newColor = event.target.value;
+                if (/^#([0-9A-Fa-f]{{3}}){{1,2}}$/.test(newColor)) {{
+                    colorInput.value = newColor;
+                    document.body.style.background = newColor;
+                }}
+            }});
+        </script>
+        <h2>🥤 Kalkulator Treningowy</h2>
+        <form method="POST">
+            <input type="number" step="0.1" name="km_calc" placeholder="Dystans (km)" required/>
+            <input type="number" step="0.1" name="speed" placeholder="Prędkość (km/h)" required/>
+            <input type="submit" name="calculate" value="Oblicz">
+        </form>
+        <div>
+            <p><strong>Wyniki Kalkulatora:</strong></p>
+            <p>🚩 BMI: {bmi:.1f}</p>
+            <p>⏳ Szacowany czas treningu: {estimated_time_h:.1f} h ({estimated_time_min:.0f} min)</p>
+            <p>🔥 Szacowane spalone kalorie: {calculated_calories:.1f} kcal</p>
+        </div>
+        <a href="/history" style="color:#FF0080">📈 Historia treningów</a><br/>
+        """
+        html = f"""
+<html><head><title>Panel użytkownika</title></head>
+<body style="font-family: Arial, sans-serif;
+             background: {background_color};
+             color: #F0F0F0;
+             font-size: {font_size};
+             text-align: center;
+             padding: 20px;
+             margin: 0;">
+<style>
+.card {{
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(12px);
+    border-radius: 15px;
+    padding: 25px;
+    margin: 20px auto;
+    max-width: 400px;
+    box-shadow: 0px 8px 25px rgba(121, 40, 202, 0.3);
+}}
+h1, h2, h3 {{
+    font-weight: 600;
+    color: #F0F0F0;
+}}
+input[type="number"], input[type="date"], input[type="submit"], input[type="text"], input[type="color"], select {{
+    padding: 14px;
+    font-size: 1rem;
+    margin: 5px;
+    border-radius: 12px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #F0F0F0;
+}}
+input[type="submit"] {{
+    background: linear-gradient(90deg, #FF0080, #7928CA);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    padding: 14px 22px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0px 0px 25px rgba(255, 0, 128, 0.5);
+    transition: 0.3s;
+}}
+input[type="submit"]:hover {{
+    background: linear-gradient(90deg, #7928CA, #FF0080);
+    box-shadow: 0px 0px 40px rgba(255, 0, 128, 0.7);
+    transform: translateY(-3px);
+}}
+ul {{
+    list-style-type: none;
+    padding: 0;
+}}
+li {{
+    background-color: rgba(255, 255, 255, 0.07);
+    padding: 12px;
+    border-radius: 12px;
+    margin: 5px 0;
+}}
+</style>
+<body>
+    <div class="card">
+        <h1>Panel użytkownika</h1>
+        <h3>Zalogowany jako: <strong>{user_email}</strong></h3>
+        {profile_form}
+        <h2>Dodaj swój wynik km</h2>
+        <form method="POST">
+            <input type="date" name="date" required/>
+            <input type="number" step="0.1" name="km" placeholder="Podaj km" required/>
+            <input type="submit" value="Dodaj">
+        </form>
+        <h2>Statystyki</h2>
+        <div>
+            <p>Łączny dystans: <strong>{total:.1f}</strong> km</p>
+            <p>Liczba przejazdów: <strong>{count}</strong></p>
+            <p>Średni dystans: <strong>{average:.1f}</strong> km</p>
+        </div>
+        <h2>Osiągnięcia</h2>
+        {achievements_html}
+        <h2>Dotychczasowe wyniki</h2>
+        {results_html}
+        <form method="POST"><input type="hidden" name="reset" value="1"><input type="submit" value="Resetuj wyniki"></form>
+        <form method="POST"><input type="hidden" name="logout" value="1"><input type="submit" value="Wyloguj"></form>
+    </div>
+</body></html>"""
+        self.send_html(html)
+
+    def show_history_page(self, user_email):
+        """Strona historii treningów z filtrowaniem po dacie."""
+        results_for_user = get_user_results(user_email)
+
+        query = parse_qs(urlparse(self.path).query)
+
+        date_from = query.get("date_from", [None])[0]
+        date_to = query.get("date_to", [None])[0]
+
+        filtered_results = []
+        for r in results_for_user:
+            if (date_from is None or r["date"] >= date_from) and (date_to is None or r["date"] <= date_to):
+                filtered_results.append(r)
+
+        total_in_range = sum(r["km"] for r in filtered_results)
+
+        results_html = "<ul>" + "".join(f"<li>{r['date']}: {r['km']} km</li>" for r in filtered_results) + "</ul>"
+
+        html = f"""
+<html><head><title>Historia treningów</title></head>
+<body style="font-family: Arial, sans-serif;
+             background: #0D1B2A;
+             color: #F0F0F0;
+             text-align: center;
+             padding: 20px;">
+<style>
+.card {{
+    background: rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(12px);
+    border-radius: 15px;
+    padding: 25px;
+    margin: 20px auto;
+    max-width: 600px;
+    box-shadow: 0px 8px 25px rgba(121, 40, 202, 0.3);
+}}
+h1, h2 {{
+    font-weight: 600;
+    color: #F0F0F0;
+}}
+input[type="date"], input[type="submit"] {{
+    padding: 12px;
+    font-size: 1rem;
+    margin: 5px;
+    border-radius: 12px;
+    border: none;
+    background-color: rgba(255, 255, 255, 0.12);
+    color: #F0F0F0;
+}}
+input[type="submit"] {{
+    background: linear-gradient(90deg, #FF0080, #7928CA);
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    padding: 14px 22px;
+    border-radius: 12px;
+    border: none;
+    cursor: pointer;
+    box-shadow: 0px 0px 25px rgba(255, 0, 128, 0.5);
+    transition: 0.3s;
+}}
+input[type="submit"]:hover {{
+    background: linear-gradient(90deg, #7928CA, #FF0080);
+    box-shadow: 0px 0px 40px rgba(255, 0, 128, 0.7);
+    transform: translateY(-3px);
+}}
+ul {{
+    list-style-type: none;
+    padding: 0;
+}}
+li {{
+    background-color: rgba(255, 255, 255, 0.07);
+    padding: 12px;
+    border-radius: 12px;
+    margin: 5px 0;
+}}
+</style>
+<body>
+    <div class="card">
+        <h1>Historia treningów</h1>
+        <form method="GET">
+            <input type="date" name="date_from" value="{date_from or ''}" placeholder="Data od">
+            <input type="date" name="date_to" value="{date_to or ''}" placeholder="Data do">
+            <input type="submit" value="Filtruj">
+        </form>
+        <h2>Łączny dystans w wybranym zakresie: {total_in_range:.1f} km</h2>
+        {results_html}
+        <a href="/" style="color:#FF0080">← Powrót</a>
+    </div>
+</body></html>"""
+        self.send_html(html)
+
+
+if __name__ == "__main__":
+    port = 8000
+    server = HTTPServer(("localhost", port), SimpleHandler)
+    print(f"Serwer uruchomiony na http://localhost:{port}")
+    server.serve_forever()
