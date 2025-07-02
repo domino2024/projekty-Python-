@@ -1,0 +1,359 @@
+from flask import Flask, request, session, redirect
+import random
+
+app = Flask(__name__)
+app.secret_key = 'tajny_klucz_balkanski'
+questions_pool = [
+{
+    'type': 'text',
+    'question': 'Które miasto było celem masakry na rynku Markale w 1994 roku?',
+    'options': ['Sarajewo', 'Mostar', 'Banja Luka', 'Tuzla'],
+    'answer': 'Sarajewo',
+    'explanation': 'Masakra na rynku Markale w Sarajewie była jednym z najtragiczniejszych wydarzeń oblężenia – zginęło 68 osób.'
+},
+{
+    'type': 'text',
+    'question': 'Kto był prezydentem Chorwacji podczas wojny w latach 1991–1995?',
+    'options': ['Franjo Tuđman', 'Slobodan Milošević', 'Alija Izetbegović', 'Radovan Karadžić'],
+    'answer': 'Franjo Tuđman',
+    'explanation': 'Franjo Tuđman był pierwszym prezydentem niepodległej Chorwacji i przywódcą w czasie wojny.'
+},
+{
+    'type': 'text',
+    'question': 'Jak nazywał się plan pokojowy z 1992 roku, który zakładał podział Bośni na kantony?',
+    'options': ['Plan Vance-Owen', 'Plan Dayton', 'Plan Z-4', 'Plan Kumanovo'],
+    'answer': 'Plan Vance-Owen',
+    'explanation': 'Plan Vance-Owen zakładał podział Bośni na 10 kantonów etnicznych, ale został odrzucony przez Serbów.'
+},
+{
+    'type': 'text',
+    'question': 'Kto był głównodowodzącym NATO podczas nalotów na Serbię w 1999 roku?',
+    'options': ['Wesley Clark', 'James Mattis', 'Colin Powell', 'Javier Solana'],
+    'answer': 'Wesley Clark',
+    'explanation': 'Generał Wesley Clark był dowódcą sił NATO podczas operacji Allied Force.'
+},
+{
+    'type': 'text',
+    'question': 'Który kraj przyjął najwięcej uchodźców z Bośni i Hercegowiny podczas wojny?',
+    'options': ['Niemcy', 'Szwecja', 'Chorwacja', 'Turcja'],
+    'answer': 'Niemcy',
+    'explanation': 'Niemcy przyjęły setki tysięcy uchodźców z Bośni w latach 90.'
+},
+{
+    'type': 'text',
+    'question': 'Który przywódca był oskarżony o zbrodnie przeciwko ludzkości i zmarł w Hadze?',
+    'options': ['Slobodan Milošević', 'Radovan Karadžić', 'Ratko Mladić', 'Franjo Tuđman'],
+    'answer': 'Slobodan Milošević',
+    'explanation': 'Slobodan Milošević zmarł w celi w Hadze w 2006 roku, zanim zapadł wyrok w jego sprawie.'
+},
+{
+    'type': 'text',
+    'question': 'Jaką nazwę nosiła serbska formacja paramilitarna znana z brutalnych działań?',
+    'options': ['Tygrysy Arkana', 'Błękitne Hełmy', 'HVO', 'UÇK'],
+    'answer': 'Tygrysy Arkana',
+    'explanation': 'Tygrysy Arkana, dowodzone przez Željko Ražnatovića, były odpowiedzialne za liczne zbrodnie wojenne.'
+},
+{
+    'type': 'text',
+    'question': 'Jakie miasto było stolicą samozwańczej Republiki Serbskiej Krajiny?',
+    'options': ['Knin', 'Banja Luka', 'Split', 'Dubrovnik'],
+    'answer': 'Knin',
+    'explanation': 'Knin było stolicą serbskiego separatystycznego tworu w Chorwacji – Republiki Serbskiej Krajiny.'
+},
+{
+    'type': 'text',
+    'question': 'Jak nazywał się kontyngent ONZ stacjonujący w Bośni podczas wojny?',
+    'options': ['UNPROFOR', 'KFOR', 'ISAF', 'SFOR'],
+    'answer': 'UNPROFOR',
+    'explanation': 'UNPROFOR (United Nations Protection Force) był siłami pokojowymi ONZ obecnymi w Bośni w latach 1992–1995.'
+},
+
+    {
+        'type': 'text',
+        'question': 'W którym roku rozpoczęła się wojna w Bośni i Hercegowinie?',
+        'options': ['1992', '1989', '1995', '2001'],
+        'answer': '1992',
+        'explanation': 'Wojna w Bośni rozpoczęła się w 1992 roku i trwała do 1995. Zginęło ponad 100 tys. osób.'
+    },
+    {
+        'type': 'text',
+        'question': 'Jakie miasto było oblężone przez ponad 1400 dni?',
+        'options': ['Sarajewo', 'Belgrad', 'Zagrzeb', 'Mostar'],
+        'answer': 'Sarajewo',
+        'explanation': 'Oblężenie Sarajewa było najdłuższym oblężeniem stolicy we współczesnej Europie (1992–1996).'
+    },
+    {
+        'type': 'text',
+        'question': 'W której miejscowości miała miejsce masakra ponad 8000 Bośniaków?',
+        'options': ['Srebrenica', 'Sarajewo', 'Prijedor', 'Vukovar'],
+        'answer': 'Srebrenica',
+        'explanation': 'W lipcu 1995 w Srebrenicy zamordowano ponad 8000 muzułmańskich mężczyzn i chłopców.'
+    },
+    {
+        'type': 'text',
+        'question': 'Które państwo jako pierwsze ogłosiło niepodległość od Jugosławii?',
+        'options': ['Słowenia', 'Chorwacja', 'Bośnia i Hercegowina', 'Kosowo'],
+        'answer': 'Słowenia',
+        'explanation': 'Słowenia ogłosiła niepodległość 25 czerwca 1991 roku.'
+    },
+    {
+        'type': 'text',
+        'question': 'Która armia dopuściła się oblężenia Vukovaru?',
+        'options': ['Jugosłowiańska Armia Ludowa (JNA)', 'NATO', 'Armia Chorwacka', 'Arkanowcy'],
+        'answer': 'Jugosłowiańska Armia Ludowa (JNA)',
+        'explanation': 'JNA i siły serbskie zniszczyły chorwacki Vukovar w 1991 roku po 87 dniach oblężenia.'
+    },
+    {
+        'type': 'text',
+        'question': 'Która organizacja zbombardowała Serbię w 1999?',
+        'options': ['NATO', 'ONZ', 'UE', 'OBWE'],
+        'answer': 'NATO',
+        'explanation': 'NATO przeprowadziło naloty na Serbię bez mandatu ONZ w odpowiedzi na konflikt w Kosowie.'
+    },
+    {
+        'type': 'flag',
+        'image': 'https://flagcdn.com/w320/rs.png',
+        'question': 'Czyja to flaga?',
+        'options': ['Serbia', 'Bułgaria', 'Chorwacja', 'Słowenia'],
+        'answer': 'Serbia',
+        'explanation': 'To flaga Serbii – czerwono-niebiesko-biała z herbem.'
+    },
+    {
+        'type': 'flag',
+        'image': 'https://flagcdn.com/w320/ba.png',
+        'question': 'Czyja to flaga?',
+        'options': ['Bośnia i Hercegowina', 'Albania', 'Kosowo', 'Macedonia Północna'],
+        'answer': 'Bośnia i Hercegowina',
+        'explanation': 'Flaga Bośni ma niebieskie tło, żółty trójkąt i białe gwiazdki.'
+    },
+    {
+        'type': 'text',
+        'question': 'Kiedy podpisano Porozumienie w Dayton, które zakończyło wojnę w Bośni?',
+        'options': ['1995', '1992', '1998', '1990'],
+        'answer': '1995',
+        'explanation': 'Porozumienie w Dayton podpisano w 1995 roku.'
+    },
+    {
+        'type': 'text',
+        'question': 'Ile dni trwało oblężenie Sarajewa?',
+        'options': ['1425', '800', '1000', '1200'],
+        'answer': '1425',
+        'explanation': 'Oblężenie Sarajewa trwało 1425 dni, czyli około 3,9 roku.'
+    },
+    {
+        'type': 'text',
+        'question': 'Jaki region był głównym powodem konfliktu między Serbią a Kosowem?',
+        'options': ['Kosowo', 'Wojwodina', 'Krajina', 'Sandżak'],
+        'answer': 'Kosowo',
+        'explanation': 'Kosowo było regionem autonomicznym, który ogłosił niepodległość od Serbii w 2008 roku, co było powodem konfliktu i interwencji NATO.'
+    }
+]
+
+# ← Tu umieść questions_pool (Twój cały zestaw pytań z flagami i tekstami)
+
+# (Dla oszczędności miejsca pomińmy tu questions_pool – masz go już z poprzednich wiadomości)
+
+def html_template(content):
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <title>Quiz o Bałkanach</title>
+    <style>
+        body {{
+            font-family: 'Courier New', monospace;
+            background: linear-gradient(to bottom,
+                #002f6c 0%, #002f6c 33.33%,
+                #ffffff 33.34%, #ffffff 66.66%,
+                #d62828 66.67%, #d62828 100%);
+            min-height: 100vh;
+            margin: 0;
+            padding: 40px;
+        }}
+        .card {{
+            background: white;
+            max-width: 800px;
+            margin: auto;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 1;
+        }}
+        h1, h2 {{
+            text-align: center;
+            font-weight: bold;
+            letter-spacing: 1px;
+        }}
+        button {{
+            background-color: #4b5320;
+            color: #f2f2f2;
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            border: 2px solid #2f3b12;
+            padding: 12px 24px;
+            border-radius: 4px;
+            box-shadow: 2px 2px 0 #2f3b12;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }}
+        button:hover {{
+            background-color: #3e4421;
+            box-shadow: none;
+            transform: translate(1px, 1px);
+        }}
+        img.flag {{
+            width: 100%;
+            max-width: 300px;
+            display: block;
+            margin: 20px auto;
+            border: 1px solid #ccc;
+        }}
+        .correct {{ color: green; }}
+        .incorrect {{ color: red; }}
+        em {{
+            display: block;
+            margin-top: 10px;
+            font-style: italic;
+            color: #555;
+        }}
+        textarea {{
+            width: 100%;
+            height: 100px;
+            margin-top: 20px;
+            font-family: monospace;
+            padding: 10px;
+        }}
+    </style>
+</head>
+<body>
+<div class="card">
+{content}
+</div>
+</body>
+</html>"""
+
+@app.route('/')
+def index():
+    session['questions'] = random.sample(questions_pool, 10)
+    session['current'] = 0
+    session['score'] = 0
+    session['answers'] = []
+    return html_template('''
+        <h1>🔥 Cienie Wojny: Bałkany w Ogniu</h1>
+        <p style="text-align:center; font-weight:bold; font-size: 1.2em;">
+            Upadek Jugosławii przyniósł chaos, cierpienie i zbrodnie, które wstrząsnęły światem.<br>
+            Czy znasz prawdę o najbardziej krwawym konflikcie w Europie po II wojnie światowej?
+        </p>
+        <form action="/quiz" method="get" style="text-align:center; margin-top: 30px;">
+            <button type="submit">Rozpocznij quiz</button>
+        </form>
+        <p style="text-align:center; margin-top: 20px;">
+            <a href="/ciekawostki"><button>📚 Ciekawostki o wojnie</button></a>
+        </p>
+    ''')
+
+@app.route('/quiz', methods=['GET', 'POST'])
+def quiz():
+    feedback = ""
+    if request.method == 'POST':
+        selected = request.form.get('answer')
+        current = session['current']
+        question = session['questions'][current - 1]
+        correct = session['correct_answer']
+        explanation = session['explanation']
+        session['answers'].append((question['question'], selected, correct))
+        if selected == correct:
+            session['score'] += 1
+            feedback = f"<p class='correct'><strong>Dobrze!</strong></p><em>{explanation}</em>"
+        else:
+            feedback = f"<p class='incorrect'><strong>Niepoprawnie.</strong></p><em>{explanation}</em>"
+
+    current = session['current']
+    if current >= len(session['questions']):
+        return redirect('/result')
+
+    question = session['questions'][current]
+    session['current'] += 1
+
+    shuffled_options = question['options'][:]
+    random.shuffle(shuffled_options)
+    session['correct_answer'] = question['answer']
+    session['explanation'] = question.get('explanation', '')
+
+    img_html = f'<img src="{question["image"]}" class="flag">' if question['type'] == 'flag' else ""
+
+    options_html = ''.join(
+        f'<label><input type="radio" name="answer" value="{opt}" required> {opt}</label><br>'
+        for opt in shuffled_options
+    )
+
+    return html_template(f'''
+        <h2>Pytanie {current} z {len(session['questions'])}</h2>
+        {feedback}
+        {img_html}
+        <form method="post">
+            <p><strong>{question["question"]}</strong></p>
+            {options_html}
+            <button type="submit">Dalej</button>
+        </form>
+    ''')
+
+@app.route('/result', methods=['GET', 'POST'])
+def result():
+    if request.method == 'POST':
+        opinia = request.form.get('opinia', '').strip()
+        if opinia:
+            with open('opinie.txt', 'a', encoding='utf-8') as f:
+                f.write(f"{opinia}\n---\n")
+    answers = session.get('answers', [])
+    score = session.get('score', 0)
+    html = f"<h1>Twój wynik: {score} / {len(answers)}</h1><ul>"
+    for q, user, correct in answers:
+        css = 'correct' if user == correct else 'incorrect'
+        html += f"<li><strong>{q}</strong><br>Twoja odpowiedź: <span class='{css}'>{user}</span><br>Poprawna: {correct}</li><br>"
+    html += "</ul><hr><h2>🗣️ Podziel się opinią</h2>"
+    html += '''
+        <form method="post">
+            <textarea name="opinia" placeholder="Napisz, co sądzisz o quizie..."></textarea><br>
+            <button type="submit">Wyślij opinię</button>
+        </form>
+        <p style="text-align:center; margin-top: 20px;">
+            <a href="/"><button>Zagraj ponownie</button></a>
+        </p>
+    '''
+    return html_template(html)
+
+
+@app.route('/ciekawostki')
+def ciekawostki():
+    content = """
+    <h1>🧠 Ciekawostki o wojnie w Jugosławii</h1>
+    <ul>
+        <li><strong>Rozpad Jugosławii</strong> rozpoczął się w 1991 roku, gdy Słowenia i Chorwacja ogłosiły niepodległość od federacji.</li><br>
+        <li><strong>Wojna w Bośni</strong> była najkrwawszym konfliktem w Europie po II wojnie światowej – zginęło ponad 100 000 osób, w tym wielu cywilów.</li><br>
+        <li><strong>Masakra w Srebrenicy</strong> w 1995 roku została uznana przez ONZ za akt ludobójstwa – zginęło ponad 8000 bośniackich muzułmanów.</li><br>
+        <li><strong>Oblężenie Sarajewa</strong> trwało 1425 dni – było to najdłuższe oblężenie stolicy w historii nowoczesnej Europy.</li><br>
+        <li><strong>NATO</strong> przeprowadziło bombardowania Serbii w 1999 roku (Operacja Allied Force) bez zgody Rady Bezpieczeństwa ONZ.</li><br>
+        <li><strong>Slobodan Milošević</strong> był pierwszym byłym prezydentem, który stanął przed Międzynarodowym Trybunałem Karnym (zmarł przed ogłoszeniem wyroku).</li><br>
+        <li><strong>Jugosławia</strong> oznacza "Kraina Południowych Słowian" i istniała od 1918 do 2003 roku (w różnych formach politycznych).</li><br>
+        <li><strong>Trybunał ICTY</strong> w Hadze oskarżył ponad 160 osób o zbrodnie wojenne, w tym generałów, polityków i bojowników.</li><br>
+        <li><strong>Wojna w Chorwacji</strong> (1991–1995) rozpoczęła się od ataku wojsk JNA i serbskich paramilitarnych na Vukovar.</li><br>
+        <li><strong>Mostar</strong> był symbolem konfliktu – historyczny Stary Most został zniszczony w 1993 roku i odbudowany dopiero w 2004.</li><br>
+        <li><strong>Kosowo</strong> ogłosiło niepodległość w 2008 roku, ale Serbia i kilka innych państw jej nie uznaje do dziś.</li><br>
+        <li><strong>Albania</strong> odegrała istotną rolę jako zaplecze logistyczne dla Albańczyków z Kosowa w konflikcie z Serbią.</li><br>
+        <li><strong>Radovan Karadžić</strong>, przywódca bośniackich Serbów, został skazany na dożywocie za zbrodnie wojenne.</li><br>
+        <li><strong>Republika Serbska</strong> to autonomiczna jednostka w Bośni i Hercegowinie powstała w wyniku Porozumienia z Dayton.</li><br>
+        <li><strong>Krajina</strong> – region zamieszkany przez Serbów w Chorwacji – był miejscem walk i czystek etnicznych z obu stron.</li><br>
+        <li><strong>„Etno-kampanie”</strong> prowadzone przez strony konfliktu polegały na wypędzaniu całych społeczności z domów ze względu na narodowość.</li>
+    </ul>
+    <p style="text-align:center;">
+        <a href="/"><button>Powrót do strony głównej</button></a>
+    </p>
+    """
+    return html_template(content)
+
+
+if __name__ == '__main__':
+    app.run(debug=True)
