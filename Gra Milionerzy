@@ -1,0 +1,324 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Milionerzy – gra konsolowa (Who Wants to Be a Millionaire?)
+Autor: ChatGPT
+Instrukcja uruchomienia:
+    python3 milionerzy.py
+
+Sterowanie:
+  - Odpowiedź: A / B / C / D
+  - Koła ratunkowe: wpisz K, potem wybierz: 1) 50:50, 2) Pytanie do publiczności, 3) Telefon do przyjaciela, 4) Zmiana pytania
+  - Rezygnacja z gry: R
+
+Cechy:
+  - 12 pytań o rosnącym poziomie trudności
+  - Progi gwarantowane: 1 000 zł i 40 000 zł
+  - 4 koła ratunkowe (jednorazowe): 50:50, publiczność, telefon, zmiana pytania
+  - Losowanie pytań ze zbioru, zachowanie poziomów trudności
+"""
+from __future__ import annotations
+import random
+import sys
+import textwrap
+
+# ------------------------- KONFIGURACJA -------------------------
+WYPŁATY = [
+    500,
+    1000,  # próg 1
+    2000,
+    5000,
+    10000,
+    20000,
+    40000,  # próg 2
+    75000,
+    125000,
+    250000,
+    500000,
+    1000000,
+]
+PROG1 = 1000
+PROG2 = 40000
+
+# Pytania: dla każdego poziomu przynajmniej 2–3 pytania, aby działała "Zmiana pytania"
+# Struktura: {"pytanie": str, "odpowiedzi": [A,B,C,D], "poprawna": "A"/"B"/"C"/"D", "poziom": 1..12}
+PYTANIA = [
+    # Poziom 1 (łatwe)
+    {"pytanie": "Jak nazywa się stolica Polski?", "odpowiedzi": ["Warszawa", "Kraków", "Gdańsk", "Wrocław"], "poprawna": "A", "poziom": 1},
+    {"pytanie": "Ile dni ma tydzień?", "odpowiedzi": ["5", "6", "7", "8"], "poprawna": "C", "poziom": 1},
+    {"pytanie": "Jakiego koloru jest trawa latem?", "odpowiedzi": ["Niebieska", "Zielona", "Czerwona", "Fioletowa"], "poprawna": "B", "poziom": 1},
+
+    # Poziom 2
+    {"pytanie": "Który z tych napojów zawiera kofeinę?", "odpowiedzi": ["Woda", "Herbata", "Sok jabłkowy", "Kompot"], "poprawna": "B", "poziom": 2},
+    {"pytanie": "Ile to 2 + 2?", "odpowiedzi": ["3", "4", "5", "6"], "poprawna": "B", "poziom": 2},
+    {"pytanie": "Jak ma na imię Kopciuszek w baśni?", "odpowiedzi": ["Cinderella", "Bella", "Ariel", "Jasmine"], "poprawna": "A", "poziom": 2},
+
+    # Poziom 3
+    {"pytanie": "Który pierwiastek chemiczny ma symbol O?", "odpowiedzi": ["Złoto", "Tlen", "Srebro", "Cyna"], "poprawna": "B", "poziom": 3},
+    {"pytanie": "Jak nazywa się największy ocean na Ziemi?", "odpowiedzi": ["Atlantycki", "Indyjski", "Spokojny (Pacyfik)", "Arktyczny"], "poprawna": "C", "poziom": 3},
+    {"pytanie": "W którym kraju leży Piza ze słynną wieżą?", "odpowiedzi": ["Hiszpania", "Włochy", "Francja", "Portugalia"], "poprawna": "B", "poziom": 3},
+
+    # Poziom 4
+    {"pytanie": "Ile wynosi liczba π z dokładnością do dwóch miejsc po przecinku?", "odpowiedzi": ["3,12", "3,14", "3,16", "3,18"], "poprawna": "B", "poziom": 4},
+    {"pytanie": "Który kontynent jest najmniejszy powierzchniowo?", "odpowiedzi": ["Australia", "Europa", "Antarktyda", "Ameryka Południowa"], "poprawna": "A", "poziom": 4},
+    {"pytanie": "Kto jest autorem 'Pana Tadeusza'?", "odpowiedzi": ["Juliusz Słowacki", "Bolesław Prus", "Adam Mickiewicz", "Henryk Sienkiewicz"], "poprawna": "C", "poziom": 4},
+
+    # Poziom 5
+    {"pytanie": "Ile godzin ma doba?", "odpowiedzi": ["12", "24", "36", "48"], "poprawna": "B", "poziom": 5},
+    {"pytanie": "Jak nazywa się najwyższy szczyt świata?", "odpowiedzi": ["K2", "Mount Everest", "Kilimandżaro", "Mont Blanc"], "poprawna": "B", "poziom": 5},
+    {"pytanie": "W jakim mieście gra klub piłkarski FC Barcelona?", "odpowiedzi": ["Madryt", "Valencia", "Barcelona", "Sewilla"], "poprawna": "C", "poziom": 5},
+
+    # Poziom 6
+    {"pytanie": "Który instrument ma klapy i stroik?", "odpowiedzi": ["Klarnet", "Fortepian", "Skrzypce", "Bęben"], "poprawna": "A", "poziom": 6},
+    {"pytanie": "Który gaz dominuje w atmosferze Ziemi?", "odpowiedzi": ["Tlen", "Dwutlenek węgla", "Azot", "Argon"], "poprawna": "C", "poziom": 6},
+    {"pytanie": "W jakim języku napisano 'Don Kichota'?", "odpowiedzi": ["Po włosku", "Po hiszpańsku", "Po francusku", "Po portugalsku"], "poprawna": "B", "poziom": 6},
+
+    # Poziom 7
+    {"pytanie": "Które miasto leży nad Wełtawą?", "odpowiedzi": ["Praga", "Wiedeń", "Budapeszt", "Bratysława"], "poprawna": "A", "poziom": 7},
+    {"pytanie": "Który z wymienionych to pierwiastek szlachetny?", "odpowiedzi": ["Krypton", "Wapń", "Żelazo", "Miedź"], "poprawna": "A", "poziom": 7},
+    {"pytanie": "Kto namalował 'Gwiaździstą noc'?", "odpowiedzi": ["Claude Monet", "Vincent van Gogh", "Pablo Picasso", "Edvard Munch"], "poprawna": "B", "poziom": 7},
+
+    # Poziom 8
+    {"pytanie": "Jak nazywa się proces przejścia cieczy w gaz?", "odpowiedzi": ["Sublimacja", "Parowanie", "Skraplanie", "Resublimacja"], "poprawna": "B", "poziom": 8},
+    {"pytanie": "Który pisarz stworzył Sherlocka Holmesa?", "odpowiedzi": ["Agatha Christie", "Arthur Conan Doyle", "Edgar Allan Poe", "J.K. Rowling"], "poprawna": "B", "poziom": 8},
+    {"pytanie": "Które państwo nie graniczy z Polską?", "odpowiedzi": ["Litwa", "Białoruś", "Słowacja", "Węgry"], "poprawna": "D", "poziom": 8},
+
+    # Poziom 9
+    {"pytanie": "W którym roku upadł Mur Berliński?", "odpowiedzi": ["1987", "1989", "1991", "1993"], "poprawna": "B", "poziom": 9},
+    {"pytanie": "Który organ wytwarza insulinę?", "odpowiedzi": ["Wątroba", "Trzustka", "Śledziona", "Tarczyca"], "poprawna": "B", "poziom": 9},
+    {"pytanie": "Która planeta jest najbliżej Słońca?", "odpowiedzi": ["Wenus", "Ziemia", "Merkury", "Mars"], "poprawna": "C", "poziom": 9},
+
+    # Poziom 10
+    {"pytanie": "Jak nazywa się stolica Kanady?", "odpowiedzi": ["Toronto", "Montreal", "Ottawa", "Vancouver"], "poprawna": "C", "poziom": 10},
+    {"pytanie": "Który język ma najwięcej native speakerów?", "odpowiedzi": ["Angielski", "Hiszpański", "Mandaryński", "Hindustani"], "poprawna": "C", "poziom": 10},
+    {"pytanie": "Który kompozytor był głuchy pod koniec życia?", "odpowiedzi": ["Mozart", "Beethoven", "Bach", "Chopin"], "poprawna": "B", "poziom": 10},
+
+    # Poziom 11
+    {"pytanie": "Jak nazywa się największy księżyc Saturna?", "odpowiedzi": ["Europa", "Ganimedes", "Tytan", "Kallisto"], "poprawna": "C", "poziom": 11},
+    {"pytanie": "Twierdzenie Pitagorasa dotyczy jakich trójkątów?", "odpowiedzi": ["Równobocznych", "Równoramiennych", "Prostokątnych", "Dowolnych"], "poprawna": "C", "poziom": 11},
+    {"pytanie": "Który z tych języków NIE jest językiem urzędowym Szwajcarii?", "odpowiedzi": ["Romansz", "Włoski", "Francuski", "Hiszpański"], "poprawna": "D", "poziom": 11},
+
+    # Poziom 12
+    {"pytanie": "Który noblista napisał 'Historię i świadomość klasową'?", "odpowiedzi": ["Karl Popper", "György Lukács", "Friedrich Hayek", "Bertrand Russell"], "poprawna": "B", "poziom": 12},
+    {"pytanie": "Który polski król jako pierwszy koronował się na Wawelu?", "odpowiedzi": ["Władysław Łokietek", "Kazimierz Wielki", "Bolesław Chrobry", "Zygmunt Stary"], "poprawna": "A", "poziom": 12},
+    {"pytanie": "W fizyce: stała Plancka ma wymiar...", "odpowiedzi": ["E·t", "p·l", "m·a", "q·V"], "poprawna": "A", "poziom": 12},
+]
+
+LITERY = ["A", "B", "C", "D"]
+
+# ------------------------- LOGIKA GRY -------------------------
+class KolaRatunkowe:
+    def __init__(self):
+        self.uzyte = {
+            "5050": False,
+            "publicznosc": False,
+            "telefon": False,
+            "zmiana": False,
+        }
+
+    def dostepne(self):
+        return [k for k, v in self.uzyte.items() if not v]
+
+
+def opisz_kola(kola: KolaRatunkowe) -> str:
+    nazwy = {
+        "5050": "50:50",
+        "publicznosc": "Pytanie do publiczności",
+        "telefon": "Telefon do przyjaciela",
+        "zmiana": "Zmiana pytania",
+    }
+    opis = []
+    for klucz in ["5050", "publicznosc", "telefon", "zmiana"]:
+        status = "(użyte)" if kola.uzyte[klucz] else ""
+        opis.append(f"- {nazwy[klucz]} {status}")
+    return "\n".join(opis)
+
+
+def format_pytanie(q: dict, dostepne_litery: list[str] | None = None) -> str:
+    if dostepne_litery is None:
+        dostepne_litery = LITERY
+    txt = ["\n" + "=" * 60]
+    txt.append(textwrap.fill(q["pytanie"], width=60))
+    txt.append("-")
+    for i, odp in enumerate(q["odpowiedzi"]):
+        lit = LITERY[i]
+        if lit in dostepne_litery:
+            txt.append(f" {lit}) {odp}")
+        else:
+            txt.append(f" {lit}) ——")
+    return "\n".join(txt)
+
+
+def losuj_pytania_poziomami() -> list[dict]:
+    # Grupujemy pytania po poziomach i losujemy po jednym na każdy poziom + zapas na zmianę
+    by_level = {}
+    for p in PYTANIA:
+        by_level.setdefault(p["poziom"], []).append(p)
+    wybrane = []
+    for poziom in range(1, 13):
+        kandydaci = list(by_level.get(poziom, []))
+        if len(kandydaci) < 1:
+            print(f"Brak pytań dla poziomu {poziom}! Uzupełnij PYTANIA.")
+            sys.exit(1)
+        random.shuffle(kandydaci)
+        # Pierwsze dwa: główne + rezerwowe do zmiany pytania
+        # Jeśli jest tylko 1 pytanie, zmiana będzie niedostępna logicznie na tym poziomie
+        wybrane.extend([p for p in kandydaci[:2]])
+    random.shuffle(wybrane)
+    # Posortuj po poziomie, aby gra szła rosnąco
+    wybrane.sort(key=lambda x: x["poziom"])
+    return wybrane
+
+
+def zastosuj_5050(q: dict) -> list[str]:
+    # Zwraca listę literek, które pozostają po 50:50 (zawsze poprawna + jedna losowa z błędnych)
+    poprawna = q["poprawna"]
+    pozostale = [l for l in LITERY if l != poprawna]
+    losowa_bledna = random.choice(pozostale)
+    return sorted([poprawna, losowa_bledna])
+
+
+def publicznosc_sugestia(q: dict) -> dict[str, int]:
+    # Prosty model: im wyższy poziom, tym większe rozproszenie i mniejsza przewaga poprawnej
+    poziom = q["poziom"]
+    base = max(55 - poziom * 2, 35)  # procent dla poprawnej
+    pozostale_sum = 100 - base
+    rozklad = [0, 0, 0, 0]
+    idx_pop = LITERY.index(q["poprawna"])
+    rozklad[idx_pop] = base
+    res_idx = [i for i in range(4) if i != idx_pop]
+    a = random.randint(10, min(50, pozostale_sum))
+    b = random.randint(0, pozostale_sum - a)
+    c = pozostale_sum - a - b
+    random.shuffle(res_idx)
+    for perc, i in zip([a, b, c], res_idx):
+        rozklad[i] = perc
+    return {LITERY[i]: rozklad[i] for i in range(4)}
+
+
+def telefon_sugestia(q: dict) -> str:
+    # 70% szans, że wskaże poprawną, inaczej losowa błędna
+    if random.random() < 0.7:
+        return q["poprawna"]
+    else:
+        bledne = [l for l in LITERY if l != q["poprawna"]]
+        return random.choice(bledne)
+
+
+def znajdz_rezerwowe_pytanie(pytania: list[dict], poziom: int, aktualne_id: int) -> tuple[int, dict] | None:
+    # Znajdź inne pytanie o tym samym poziomie, inne niż aktualne (po indeksie)
+    for i, p in enumerate(pytania):
+        if p["poziom"] == poziom and i != aktualne_id:
+            return i, p
+    return None
+
+
+def gra():
+    print("\nWitaj w grze MILIONERZY!\n")
+    imie = input("Podaj swoje imię: ").strip() or "Gracz"
+    pytania = losuj_pytania_poziomami()
+
+    kola = KolaRatunkowe()
+    wygrana = 0
+
+    i = 0  # indeks po wyselekcjonowanej liście pytań, ale będziemy przeskakiwać tylko po poziomach 1..12
+    poziom_docelowy = 1
+
+    while poziom_docelowy <= 12:
+        # znajdź pierwsze pytanie o tym poziomie, które jeszcze nie było użyte
+        idx = next((j for j in range(i, len(pytania)) if pytania[j]["poziom"] == poziom_docelowy), None)
+        if idx is None:
+            print(f"Brak pytań dla poziomu {poziom_docelowy}. Kończymy grę.")
+            break
+        q = pytania[idx]
+
+        dostepne_litery = LITERY[:]
+        uzyte_5050 = False
+
+        while True:
+            print(format_pytanie(q, dostepne_litery))
+            print("\nWpisz A/B/C/D, 'K' aby użyć koła ratunkowego, 'R' aby zrezygnować.")
+            print("Koła ratunkowe:\n" + opisz_kola(kola))
+            wybor = input(">> ").strip().upper()
+
+            if wybor == 'R':
+                print(f"\n{imie}, rezygnujesz i zabierasz {wygrana:,} zł. Gratulacje!".replace(',', ' '))
+                return
+
+            if wybor == 'K':
+                if not kola.dostepne():
+                    print("Brak dostępnych kół ratunkowych!")
+                    continue
+                print("\nWybierz koło: 1) 50:50  2) Publiczność  3) Telefon  4) Zmiana pytania")
+                k = input("Numer koła: ").strip()
+                if k == '1' and not kola.uzyte["5050"]:
+                    dostepne_litery = zastosuj_5050(q)
+                    kola.uzyte["5050"] = True
+                    uzyte_5050 = True
+                    print("\nZastosowano 50:50. Pozostały dwie odpowiedzi.")
+                    continue
+                elif k == '2' and not kola.uzyte["publicznosc"]:
+                    kola.uzyte["publicznosc"] = True
+                    rozklad = publicznosc_sugestia(q)
+                    print("\nGłosowanie publiczności:")
+                    for lit in LITERY:
+                        print(f"  {lit}: {rozklad[lit]}%")
+                    continue
+                elif k == '3' and not kola.uzyte["telefon"]:
+                    kola.uzyte["telefon"] = True
+                    sug = telefon_sugestia(q)
+                    print(f"\nPrzyjaciel mówi: 'Wydaje mi się, że to {sug}.'")
+                    continue
+                elif k == '4' and not kola.uzyte["zmiana"]:
+                    # spróbuj znaleźć pytanie rezerwowe tego samego poziomu
+                    res = znajdz_rezerwowe_pytanie(pytania, q["poziom"], idx)
+                    if res is None:
+                        print("Brak rezerwowego pytania na tym poziomie – nie można użyć zmiany.")
+                        continue
+                    nowe_idx, nowe_q = res
+                    # zamień miejscami, aby bieżące pytanie trafiło dalej i nie było już na tym poziomie jako pierwsze
+                    pytania[idx], pytania[nowe_idx] = pytania[nowe_idx], pytania[idx]
+                    q = pytania[idx]
+                    kola.uzyte["zmiana"] = True
+                    dostepne_litery = LITERY[:]
+                    uzyte_5050 = False
+                    print("\nZmieniono pytanie!")
+                    continue
+                else:
+                    print("Nieprawidłowy wybór lub koło już użyte.")
+                    continue
+
+            if wybor in LITERY and wybor in dostepne_litery:
+                if wybor == q["poprawna"]:
+                    wygrana = WYPŁATY[poziom_docelowy - 1]
+                    print(f"\nPoprawna odpowiedź! Wygrywasz {wygrana:,} zł.".replace(',', ' '))
+                    if wygrana == PROG1:
+                        print("(Osiągnięto próg gwarantowany 1 000 zł)")
+                    if wygrana == PROG2:
+                        print("(Osiągnięto próg gwarantowany 40 000 zł)")
+                    poziom_docelowy += 1
+                    i = idx + 1
+                    break
+                else:
+                    # Błędna odpowiedź – wypłata do najbliższego progu
+                    gwarant = 0
+                    if wygrana >= PROG2:
+                        gwarant = PROG2
+                    elif wygrana >= PROG1:
+                        gwarant = PROG1
+                    print(f"\nNiestety, to błędna odpowiedź. Twoja wygrana gwarantowana: {gwarant:,} zł.".replace(',', ' '))
+                    return
+            else:
+                if wybor in LITERY and not (wybor in dostepne_litery):
+                    print("Ta odpowiedź została usunięta przez 50:50.")
+                else:
+                    print("Wpisz A/B/C/D, K lub R.")
+
+    print(f"\n{imie}, BRAWO! Zostajesz MILIONEREM i zdobywasz 1 000 000 zł!")
+
+
+if __name__ == "__main__":
+    try:
+        gra()
+    except KeyboardInterrupt:
+        print("\n\nDo zobaczenia!")
