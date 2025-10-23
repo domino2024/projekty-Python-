@@ -1,0 +1,196 @@
+import tkinter as tk
+import random
+
+# --- Ustawienia okna gry ---
+WIDTH = 400
+HEIGHT = 300
+
+# --- Ustawienia gracza ---
+player_size = 30
+player_speed = 7
+player_pos = [WIDTH // 2, HEIGHT - 2 * player_size]
+
+# --- Ustawienia przeciwnika ---
+enemy_size = 30
+enemy_speed = 0  # ustawiane po wyborze poziomu
+enemy_pos = [random.randint(0, WIDTH - enemy_size), 0]
+
+# --- Statystyki gry ---
+score = 0
+level = 1
+points_for_next_level = 5
+
+# --- Okno gry ---
+root = tk.Tk()
+root.title("Prosta Gra z Planszą i Płynnym Ruchem")
+
+canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT)
+canvas.pack()
+
+score_label = tk.Label(root, text=f"Score: {score}  Level: {level}", font=("Helvetica", 16))
+score_label.pack()
+
+player = None
+enemy = None
+keys_pressed = set()
+
+
+# === FUNKCJE RYSUJĄCE PLANSZĘ ===
+def draw_board():
+    """Rysuje kolorową planszę (tło) z siatką i ramką."""
+    canvas.delete("all")
+
+    # Gradientowe tło (niebiesko-fioletowe)
+    for i in range(0, HEIGHT, 2):
+        color = f'#{(50 + i // 3):02x}{(50 + i // 5):02x}{150 + i // 10:02x}'
+        canvas.create_rectangle(0, i, WIDTH, i + 2, fill=color, outline="")
+
+    # Ramka
+    canvas.create_rectangle(5, 5, WIDTH - 5, HEIGHT - 5, outline="white", width=3)
+
+    # Gwiazdki / siatka
+    for _ in range(20):
+        x = random.randint(10, WIDTH - 10)
+        y = random.randint(10, HEIGHT - 10)
+        canvas.create_oval(x, y, x + 2, y + 2, fill="white", outline="")
+
+    # Tekst "Arena"
+    canvas.create_text(WIDTH // 2, 20, text="ARENA", font=("Helvetica", 14, "bold"), fill="white")
+
+
+# === OBSŁUGA KLAWISZY ===
+def on_key_press(event):
+    keys_pressed.add(event.keysym)
+
+
+def on_key_release(event):
+    if event.keysym in keys_pressed:
+        keys_pressed.remove(event.keysym)
+
+
+def update_player_position():
+    """Płynne poruszanie gracza."""
+    global player_pos
+
+    if 'Left' in keys_pressed:
+        player_pos[0] = max(10, player_pos[0] - player_speed)
+    if 'Right' in keys_pressed:
+        player_pos[0] = min(WIDTH - player_size - 10, player_pos[0] + player_speed)
+    if 'Up' in keys_pressed:
+        player_pos[1] = max(10, player_pos[1] - player_speed)
+    if 'Down' in keys_pressed:
+        player_pos[1] = min(HEIGHT - player_size - 10, player_pos[1] + player_speed)
+
+    if player:
+        canvas.coords(player, player_pos[0], player_pos[1],
+                      player_pos[0] + player_size, player_pos[1] + player_size)
+
+    root.after(20, update_player_position)
+
+
+# === FUNKCJE GRY ===
+def restart_game():
+    """Powrót do menu."""
+    global score, level, enemy_speed
+    score = 0
+    level = 1
+    enemy_speed = 0
+    score_label.config(text=f"Score: {score}  Level: {level}")
+    show_menu()
+
+
+def show_menu():
+    """Pokazuje menu wyboru poziomu trudności."""
+    for widget in root.winfo_children():
+        if isinstance(widget, tk.Button):
+            widget.destroy()
+
+    draw_board()
+    canvas.create_text(WIDTH // 2, HEIGHT // 3,
+                       text="Wybierz poziom trudności", font=("Helvetica", 18), fill="white")
+
+    tk.Button(root, text="Łatwy", width=15, bg="lightgreen", font=("Helvetica", 14),
+              command=lambda: start_game(3)).pack(pady=5)
+    tk.Button(root, text="Średni", width=15, bg="khaki", font=("Helvetica", 14),
+              command=lambda: start_game(5)).pack(pady=5)
+    tk.Button(root, text="Trudny", width=15, bg="salmon", font=("Helvetica", 14),
+              command=lambda: start_game(8)).pack(pady=5)
+    tk.Button(root, text="Zakończ grę", command=root.quit, font=("Helvetica", 12)).pack(pady=10)
+
+
+def start_game(speed):
+    """Rozpoczyna rozgrywkę."""
+    global enemy_speed, player, enemy, player_pos, enemy_pos
+    enemy_speed = speed
+    player_pos = [WIDTH // 2, HEIGHT - 2 * player_size]
+    enemy_pos = [random.randint(0, WIDTH - enemy_size), 0]
+
+    for widget in root.winfo_children():
+        if isinstance(widget, tk.Button):
+            widget.destroy()
+
+    draw_board()
+    player = canvas.create_rectangle(player_pos[0], player_pos[1],
+                                     player_pos[0] + player_size, player_pos[1] + player_size, fill="red")
+    enemy = canvas.create_rectangle(enemy_pos[0], enemy_pos[1],
+                                    enemy_pos[0] + enemy_size, enemy_pos[1] + enemy_size, fill="blue")
+
+    update_player_position()
+    move_enemy()
+
+
+def move_enemy():
+    """Poruszanie przeciwnikiem."""
+    global score, enemy_speed, level
+
+    enemy_pos[1] += enemy_speed
+    canvas.coords(enemy, enemy_pos[0], enemy_pos[1],
+                  enemy_pos[0] + enemy_size, enemy_pos[1] + enemy_size)
+
+    if detect_collision(player_pos, enemy_pos):
+        game_over()
+        return
+
+    if enemy_pos[1] > HEIGHT:
+        enemy_pos[0] = random.randint(10, WIDTH - enemy_size - 10)
+        enemy_pos[1] = 0
+        score += 1
+        score_label.config(text=f"Score: {score}  Level: {level}")
+
+        if score % points_for_next_level == 0:
+            level += 1
+            enemy_speed += 2
+            score_label.config(text=f"Score: {score}  Level: {level}")
+
+    root.after(50, move_enemy)
+
+
+def detect_collision(player_pos, enemy_pos):
+    """Sprawdza kolizję prostokątów."""
+    if (enemy_pos[0] < player_pos[0] + player_size and
+        enemy_pos[0] + enemy_size > player_pos[0] and
+        enemy_pos[1] < player_pos[1] + player_size and
+        enemy_pos[1] + enemy_size > player_pos[1]):
+        return True
+    return False
+
+
+def game_over():
+    """Ekran końca gry."""
+    canvas.create_text(WIDTH // 2, HEIGHT // 2,
+                       text=f"GAME OVER\nScore: {score}\nLevel: {level}",
+                       fill="white", font=("Helvetica", 22, "bold"))
+
+    tk.Button(root, text="Zagraj ponownie", font=("Helvetica", 14), bg="lightblue",
+              command=restart_game).pack(pady=10)
+    tk.Button(root, text="Zakończ grę", font=("Helvetica", 12),
+              command=root.quit).pack(pady=5)
+
+
+# === OBSŁUGA KLAWISZY ===
+canvas.bind_all("<KeyPress>", on_key_press)
+canvas.bind_all("<KeyRelease>", on_key_release)
+
+# === START ===
+show_menu()
+root.mainloop()
