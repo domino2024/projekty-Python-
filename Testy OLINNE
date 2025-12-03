@@ -1,0 +1,3267 @@
+from flask import (
+    Flask,
+    request,
+    render_template_string,
+    url_for,
+    session,
+    redirect,
+    abort,
+)
+import time
+
+app = Flask(__name__)
+app.secret_key = "bardzo_tajemny_klucz_istqb"
+
+# Limit czasu egzaminu – 60 minut (w sekundach)
+EXAM_DURATION_SECONDS = 60 * 60  # 60 min
+PASS_THRESHOLD = 65  # próg zdania egzaminu w %
+
+
+# =========================================
+# PYTANIA – EGZAMIN 1
+# =========================================
+
+QUESTIONS_EXAM1 = [
+    {
+        "id": 1,
+        "text": "Która z poniższych odpowiedzi opisuje poprawny cel testów?",
+        "options": {
+            "A": "Udowodnienie, że w systemie podlegającym testowaniu nie występują żadne nieusunięte defekty.",
+            "B": "Udowodnienie, że po wprowadzeniu systemu do eksploatacji nie będą występowały żadne awarie.",
+            "C": "Obniżenie poziomu ryzyka związanego z przedmiotem testów i zwiększenie zaufania do jego jakości.",
+            "D": "Sprawdzenie, czy nie pozostały żadne nieprzetestowane kombinacje danych wejściowych.",
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Nie da się udowodnić, że w systemie nie ma defektów.",
+            "B": "Odpowiedź niepoprawna. Nie da się zagwarantować braku awarii po wdrożeniu.",
+            "C": "Odpowiedź poprawna. Testowanie obniża ryzyko i zwiększa zaufanie do jakości.",
+            "D": "Odpowiedź niepoprawna. Przetestowanie wszystkich kombinacji danych jest niemożliwe.",
+        },
+    },
+    {
+        "id": 2,
+        "text": (
+            "Oprogramowanie systemu nawigacji zostało poprawione, ponieważ proponowało trasy naruszające "
+            "przepisy ruchu drogowego. Jakie testy należy wykonać?"
+        ),
+        "options": {
+            "A": "Tylko testowanie potwierdzające.",
+            "B": "Testowanie potwierdzające, a następnie testowanie regresji.",
+            "C": "Tylko testowanie regresji.",
+            "D": "Testowanie regresji, a następnie testowanie potwierdzające.",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna – brakuje testów regresji.",
+            "B": "Odpowiedź poprawna – najpierw potwierdzamy poprawkę, potem sprawdzamy regresję.",
+            "C": "Odpowiedź niepoprawna – trzeba też sprawdzić samą poprawkę.",
+            "D": "Odpowiedź niepoprawna – kolejność powinna być odwrotna.",
+        },
+    },
+    {
+        "id": 3,
+        "text": (
+            "System sprzedaży biletów do kina oblicza typ zniżki na podstawie roku urodzenia klienta (RU) "
+            "oraz roku bieżącego (RB). Jeśli 0 ≤ D < 18 – zniżka uczniowska, 18 ≤ D < 65 – brak zniżki, "
+            "D ≥ 65 – zniżka emerycka. Jakie D odpowiada zniżce uczniowskiej?"
+        ),
+        "options": {
+            "A": "D = -1",
+            "B": "D = 10",
+            "C": "D = 30",
+            "D": "D = 70",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna – wartość ujemna to błąd danych.",
+            "B": "Odpowiedź poprawna – 10 mieści się w przedziale 0–18.",
+            "C": "Odpowiedź niepoprawna – to już klasa 'brak zniżki'.",
+            "D": "Odpowiedź niepoprawna – to klasa 'zniżka emerycka'.",
+        },
+    },
+    {
+        "id": 4,
+        "text": (
+            "Pracujesz w zespole, który tworzy aplikację mobilną do zamawiania posiłków. "
+            "Zespół postanowił, że w bieżącej iteracji ma zostać zaimplementowana funkcjonalność obsługi płatności. "
+            "Która z wymienionych czynności jest elementem analizy testów?"
+        ),
+        "options": {
+            "A": "Oszacowanie, że testowanie integracji z usługą płatniczą potrwa 8 osobodni.",
+            "B": "Podjęcie decyzji, że zespół powinien przetestować, czy istnieje możliwość prawidłowego podziału płatności między kilku użytkowników.",
+            "C": "Zastosowanie metody analizy wartości brzegowych w celu opracowania danych testowych na potrzeby przypadków testowych minimalnej dozwolonej kwoty.",
+            "D": "Przeanalizowanie rozbieżności między rzeczywistym a oczekiwanym rezultatem po wykonaniu przypadku testowego dla płatności kartą kredytową i zgłoszenie defektu."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Szacowanie pracochłonności testów jest elementem planowania testów.",
+            "B": "Odpowiedź poprawna. To przykład definiowania warunków testowych – typowa czynność w ramach analizy testów.",
+            "C": "Odpowiedź niepoprawna. Opracowywanie danych testowych to projektowanie testów.",
+            "D": "Odpowiedź niepoprawna. Zgłaszanie defektów jest elementem wykonywania testów."
+        }
+    },
+    # ===== PYTANIE 5 =====
+    {
+        "id": 5,
+        "text": (
+            "Przeglądy przeprowadzane w organizacji mają następujące atrybuty:\n"
+            "• Wyznaczono osobę pełniącą rolę protokolanta.\n"
+            "• Głównym celem jest dokonywanie oceny jakości.\n"
+            "• Spotkanie związane z przeglądem prowadzi autor produktu pracy.\n"
+            "• Uczestnicy przygotowują się indywidualnie.\n"
+            "• Sporządzany jest raport z przeglądu.\n\n"
+            "Który z poniższych typów przeglądu jest NAJPRAWDOPODOBNIEJ stosowany?"
+        ),
+        "options": {
+            "A": "Przegląd nieformalny.",
+            "B": "Przejrzenie.",
+            "C": "Przegląd techniczny.",
+            "D": "Inspekcja."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Atrybuty te nie pasują do przeglądu nieformalnego, który nie wymaga formalnej dokumentacji.",
+            "B": (
+                "Odpowiedź poprawna. Celem jest ocena jakości (typowe dla przejrzenia), autor prowadzi spotkanie "
+                "(niedozwolone w inspekcji, nietypowe w przeglądzie technicznym), uczestnicy przygotowują się indywidualnie "
+                "i powstaje raport – wszystkie te atrybuty pasują do przejrzenia."
+            ),
+            "C": "Odpowiedź niepoprawna. W przeglądzie technicznym spotkania zwykle nie prowadzi autor produktu pracy.",
+            "D": "Odpowiedź niepoprawna. W inspekcji autor nie może prowadzić spotkania, a wymagany jest moderator."
+        }
+    },
+    # ===== PYTANIE 6 – DWIE POPRAWNE ODPOWIEDZI =====
+    {
+        "id": 6,
+        "text": (
+            "Wskaż DWA z wymienionych poniżej zadań, które są przypisane GŁÓWNIE do roli związanej z testowaniem.\n"
+            "Wybierz dwie odpowiedzi."
+        ),
+        "options": {
+            "A": "Konfigurowanie środowiska testowego.",
+            "B": "Prowadzenie backlogu produktu.",
+            "C": "Projektowanie rozwiązań dla nowych wymagań.",
+            "D": "Tworzenie planu testów.",
+            "E": "Analizowanie podstawy testów."
+        },
+        "correct_multiple": ["A", "E"],
+        "explanations": {
+            "A": "Odpowiedź poprawna. Konfigurowanie środowiska testowego jest typowym zadaniem testerów.",
+            "B": "Odpowiedź niepoprawna. Backlog produktu tworzy i utrzymuje właściciel produktu.",
+            "C": "Odpowiedź niepoprawna. Projektowanie rozwiązań jest zadaniem zespołu developerskiego.",
+            "D": "Odpowiedź niepoprawna. Tworzenie planu testów jest zadaniem kierownika testów / test managera.",
+            "E": "Odpowiedź poprawna. Analizowanie podstawy testów to techniczne zadanie testerów (analiza testów)."
+        }
+    },
+    # ===== PYTANIE 7 – ATDD =====
+    {
+        "id": 7,
+        "text": (
+            "Które z poniższych stwierdzeń NAJLEPIEJ opisuje wytwarzanie sterowane testami akceptacyjnymi (ATDD)?"
+        ),
+        "options": {
+            "A": "W modelu ATDD kryteria akceptacji są zwykle tworzone w formacie Given/When/Then (Mając/Kiedy/Wtedy).",
+            "B": "W modelu ATDD przypadki testowe są zwykle tworzone na etapie testowania modułowego i są ukierunkowane na kod.",
+            "C": "W modelu ATDD testy są tworzone na podstawie kryteriów akceptacji i określają sposób tworzenia związanego z nimi oprogramowania.",
+            "D": "W modelu ATDD testy są tworzone na podstawie pożądanego zachowania oprogramowania, co ułatwia członkom zespołu ich zrozumienie."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Format Given/When/Then jest częściej stosowany w BDD (Behavior-Driven Development).",
+            "B": "Odpowiedź niepoprawna. To opis wytwarzania sterowanego testami (Test-Driven Development, TDD).",
+            "C": "Odpowiedź poprawna. W ATDD testy są tworzone na podstawie kryteriów akceptacji i sterują projektowaniem oraz implementacją.",
+            "D": "Odpowiedź niepoprawna. Opis ten lepiej pasuje do BDD, gdzie punktem wyjścia jest pożądane zachowanie systemu."
+        }
+    },
+    # ===== PYTANIE 8 – SHIFT LEFT =====
+    {
+        "id": 8,
+        "text": (
+            "Które z poniższych stwierdzeń NIE jest przykładem podejścia przesunięcia w lewo (ang. shift left)?"
+        ),
+        "options": {
+            "A": "Dokonywanie przeglądu wymagań użytkowników przed ich formalnym zaakceptowaniem przez interesariuszy.",
+            "B": "Pisanie testu modułowego przed napisaniem odpowiadającego mu kodu.",
+            "C": "Wykonywanie testu wydajności modułu w trakcie testowania modułowego.",
+            "D": "Pisanie skryptu testowego przed ustanowieniem procesu zarządzania konfiguracją."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Wczesny przegląd wymagań jest typowym przykładem podejścia shift left.",
+            "B": "Odpowiedź niepoprawna. TDD (Test-Driven Development) jest przykładem podejścia shift left.",
+            "C": "Odpowiedź niepoprawna. Testy niefunkcjonalne na wczesnym etapie też są przykładem shift left.",
+            "D": "Odpowiedź poprawna. Skrypty testowe powinny być objęte zarządzaniem konfiguracją, więc tworzenie ich przed ustanowieniem tego procesu nie ma sensu."
+        }
+    },
+    # ===== PYTANIE 9 – MAPOWANIE AWARII =====
+    {
+        "id": 9,
+        "text": (
+            "Które typy awarii (1–4) NAJLEPIEJ odpowiadają poszczególnym poziomom testów (A–D)?\n"
+            "1. Awarie związane z zachowaniem systemu, polegające na niezgodności z potrzebami biznesowymi użytkownika.\n"
+            "2. Awarie dotyczące komunikacji między modułami.\n"
+            "3. Awarie dotyczące logiki danego modułu.\n"
+            "4. Awarie związane z nieprawidłowo zaimplementowanymi regułami biznesowymi.\n"
+            "A. Testowanie modułowe.\n"
+            "B. Testowanie integracji modułów.\n"
+            "C. Testowanie systemowe.\n"
+            "D. Testowanie akceptacyjne.\n\n"
+            "a) 1D, 2B, 3A, 4C\n"
+            "b) 1D, 2B, 3C, 4A\n"
+            "c) 1B, 2A, 3D, 4C\n"
+            "d) 1C, 2B, 3A, 4D"
+        ),
+        "options": {
+            "A": "a) 1D, 2B, 3A, 4C",
+            "B": "b) 1D, 2B, 3C, 4A",
+            "C": "c) 1B, 2A, 3D, 4C",
+            "D": "d) 1C, 2B, 3A, 4D"
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Potrzeby biznesowe użytkownika są podstawą testów akceptacyjnych (1D). "
+                "Komunikacja między modułami to zakres testów integracji modułów (2B). "
+                "Logika modułu jest testowana na poziomie testów modułowych (3A). "
+                "Reguły biznesowe są podstawą testów systemowych (4C)."
+            ),
+            "B": "Odpowiedź niepoprawna. Mapowanie nie odpowiada poziomom i typom awarii opisanym w pytaniu.",
+            "C": "Odpowiedź niepoprawna. Błędnie przypisano logikę modułu do testów akceptacyjnych.",
+            "D": "Odpowiedź niepoprawna. Potrzeby biznesowe przypisano do testów systemowych, co jest niezgodne z definicjami poziomów."
+        }
+    },
+
+    # ===== PYTANIE 10 – TESTOWANIE STATYCZNE =====
+    {
+        "id": 10,
+        "text": "Które z poniższych stwierdzeń NIE opisuje korzyści wynikających z testowania statycznego?",
+        "options": {
+            "A": "Obniżenie kosztów zarządzania defektami z uwagi na łatwość wykrywania defektów na późniejszych etapach cyklu wytwarzania oprogramowania.",
+            "B": "Niższe koszty usuwania defektów wykrytych podczas testowania statycznego w porównaniu z usuwaniem defektów wykrytych podczas testowania dynamicznego.",
+            "C": "Wykrywanie defektów w kodzie, które mogłyby nie zostać wykryte w przypadku wykonania wyłącznie testowania dynamicznego.",
+            "D": "Wykrywanie luk i niespójności w wymaganiach."
+        },
+        "correct": "A",
+        "explanations": {
+            "A": "Odpowiedź poprawna. Koszty wykrywania i usuwania defektów na późnych etapach są wyższe, a nie niższe – to NIE jest korzyść testów statycznych.",
+            "B": "Odpowiedź niepoprawna. To korzyść testowania statycznego – defekty wykryte wcześniej są tańsze w usunięciu.",
+            "C": "Odpowiedź niepoprawna. Testowanie statyczne może wykryć defekty niewychwycone w testach dynamicznych.",
+            "D": "Odpowiedź niepoprawna. Wykrywanie luk i niespójności w wymaganiach jest ważną korzyścią testowania statycznego."
+        }
+    },
+# ===== PYTANIE 11 – WCZESNE INFORMACJE ZWROTNE =====
+    {
+        "id": 11,
+        "text": "Które z poniższych jest korzyścią wynikającą z wczesnego i częstego otrzymywania informacji zwrotnych?",
+        "options": {
+            "A": "Usprawnienie procesu testowego na potrzeby przyszłych projektów.",
+            "B": "Zmuszanie klientów do ustalania priorytetów wymagań na podstawie uzgodnionych ryzyk.",
+            "C": "Jest to jedyny sposób mierzenia jakości zmian.",
+            "D": "Unikanie nieporozumień w kwestii wymagań."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Informacje zwrotne pomagają usprawnić proces testowy, ale nie muszą być wczesne i częste, jeśli dotyczą wyłącznie przyszłych projektów.",
+            "B": "Odpowiedź niepoprawna. Informacje zwrotne nie są narzędziem do zmuszania klientów do ustalania priorytetów wymagań.",
+            "C": "Odpowiedź niepoprawna. Nie ma jednego, jedynego sposobu mierzenia jakości zmian.",
+            "D": "Odpowiedź poprawna. Wczesne i częste informacje zwrotne pomagają uniknąć nieporozumień dotyczących wymagań."
+        }
+    },
+
+    # ===== PYTANIE 12 – CZYNNIKI POWODZENIA PRZEGLĄDU =====
+    {
+        "id": 12,
+        "text": "Który z wymienionych elementów NIE jest czynnikiem przyczyniającym się do powodzenia przeglądu?",
+        "options": {
+            "A": "Przeznaczenie przez uczestników odpowiedniej ilości czasu na przeprowadzenie przeglądu.",
+            "B": "Podzielenie dużych produktów pracy na mniejsze części w celu zmniejszenia wymaganych nakładów pracy.",
+            "C": "Unikanie zachowań, które mogłyby wskazywać na znudzenie, irytację bądź wrogie nastawienie wobec innych uczestników.",
+            "D": "Przyjmowanie do wiadomości, potwierdzanie i rozpatrywanie wykrytych awarii w obiektywny sposób."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Zapewnienie odpowiedniej ilości czasu jest czynnikiem powodzenia przeglądu.",
+            "B": "Odpowiedź niepoprawna. Dzielenie produktów pracy na mniejsze części ułatwia efektywne przeglądy.",
+            "C": "Odpowiedź niepoprawna. Odpowiednia postawa i unikanie wrogich zachowań sprzyjają powodzeniu przeglądu.",
+            "D": "Odpowiedź poprawna. Podczas przeglądów identyfikowane są defekty w produktach pracy, a nie awarie systemu."
+        }
+    },
+# ===== PYTANIE 13 – TECHNIKI OPARTE NA DOŚWIADCZENIU =====
+    {
+        "id": 13,
+        "text": "Która z poniższych cech charakteryzuje techniki testowania oparte na doświadczeniu?",
+        "options": {
+            "A": "Przypadki testowe są tworzone na podstawie szczegółowych informacji projektowych.",
+            "B": "Do mierzenia pokrycia używane są elementy testowane w kodzie implementującym interfejsy.",
+            "C": "Stosowane techniki bazują w dużej mierze na wiedzy testera dotyczącej oprogramowania i dziedziny biznesowej.",
+            "D": "Za pomocą przypadków testowych identyfikowane są odchylenia od wymagań."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. To typowa cecha technik białoskrzynkowych – bazujących na kodzie, architekturze, projekcie.",
+            "B": "Odpowiedź niepoprawna. To również cecha białoskrzynkowych technik testowania – pokrycie mierzy się na podstawie przetestowanych elementów struktury.",
+            "C": "Odpowiedź poprawna. Techniki oparte na doświadczeniu wykorzystują wiedzę testera o systemie, domenie, typowych defektach i sposobach użycia.",
+            "D": "Odpowiedź niepoprawna. To typowa cecha czarnoskrzynkowych technik testowania, gdzie porównuje się zachowanie z wymaganiami."
+        }
+    },
+
+    # ===== PYTANIE 14 – CZYNNIKI WPŁYWAJĄCE NA PROCES TESTOWY =====
+    {
+        "id": 14,
+        "text": "Które z poniższych ma NAJMNIEJSZY wpływ na proces testowy w organizacji?",
+        "options": {
+            "A": "Budżet projektu.",
+            "B": "Normy i standardy zewnętrzne.",
+            "C": "Liczba zatrudnionych w organizacji certyfikowanych testerów.",
+            "D": "Znajomość dziedziny biznesowej przez testerów."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Budżet wpływa silnie na proces testowy: ile osób można zatrudnić, jakie narzędzia kupić, ile czasu przeznaczyć na testy.",
+            "B": "Odpowiedź niepoprawna. Normy i standardy (np. ISO, regulacje prawne) mogą wymuszać konkretny sposób testowania, dokumentację i typy testów.",
+            "C": "Odpowiedź poprawna. Certyfikaty nie gwarantują jakości procesu; ważniejsze są praktyczne umiejętności, współpraca i znajomość domeny.",
+            "D": "Odpowiedź niepoprawna. Dobra znajomość dziedziny biznesowej przez testerów znacznie poprawia jakość testów i wykrywanie istotnych defektów."
+        }
+    },
+
+    # ===== PYTANIE 15 – TESTOWANIE vs DEBUGOWANIE =====
+    {
+        "id": 15,
+        "text": (
+            "Poniżej podana jest lista czynności związanych z defektami i awariami w oprogramowaniu:\n"
+            "1. Znajdowanie defektów w kodzie.\n"
+            "2. Ujawnienie awarii.\n"
+            "3. Analizowanie znalezionych defektów.\n"
+            "4. Wykonywanie retestów.\n\n"
+            "Która z tych czynności to debugowanie, a która testowanie?"
+        ),
+        "options": {
+            "A": "Pierwsza i trzecia.",
+            "B": "Druga i czwarta.",
+            "C": "Druga i trzecia.",
+            "D": "Pierwsza i czwarta."
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Debugowanie obejmuje pracę z kodem: znajdowanie defektów w kodzie (1) "
+                "oraz analizowanie znalezionych defektów i szukanie ich przyczyn (3)."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Ujawnienie awarii (2) oraz wykonywanie retestów (4) należą do testowania, "
+                "a nie debugowania."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Ujawnienie awarii (2) to testowanie, natomiast analizowanie defektów (3) "
+                "to debugowanie – tutaj wymieszano role."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Znajdowanie defektów w kodzie (1) to debugowanie, ale wykonywanie retestów (4) "
+                "to typowe zadanie testera, nie programisty."
+            )
+        }
+    },
+
+    # ===== PYTANIE 16 – WKŁAD TESTOWANIA W SUKCES PROJEKTU =====
+    {
+        "id": 16,
+        "text": (
+            "Jesteś testerem w projekcie tworzącym grę opartą na mitach greckich. Tworzysz kryterium akceptacyjne "
+            "dla następującej historyjki użytkownika:\n\n"
+            "„Jako gracz poziomu 4 chcę móc użyć różdżki Midasa, by zmienić stojący przede mną przedmiot w złoto "
+            "i powiększyć moje zasoby finansowe”.\n\n"
+            "Zauważyłeś, że brak informacji dotyczącej czasu zmiany przedmiotu w złoto.\n"
+            "Które z poniższych stwierdzeń NAJLEPIEJ obrazuje wkład testowania w sukces projektu?"
+        ),
+        "options": {
+            "A": "Poinformowanie zespołu, że twórca historyjki użytkownika niepoprawnie wykonał swoje zadanie.",
+            "B": "Zmniejszenie ryzyka wytwarzania niepoprawnej lub niedostatecznej cechy jakości oprogramowania.",
+            "C": "Wymuszenie, by właściciel produktu uzupełnił natychmiast brakujące dane.",
+            "D": "Polepszenie podcharakterystyki wydajności, jaką jest zachowanie się w czasie."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Tester nie ocenia ludzi, tylko jakość wymagań i ryzyka.",
+            "B": (
+                "Odpowiedź poprawna. Zgłoszenie braku (brak czasu działania różdżki) zmniejsza ryzyko wytworzenia funkcji "
+                "niekompletnej lub niezgodnej z oczekiwaniami – to klasyczny wkład testowania w sukces projektu."
+            ),
+            "C": "Odpowiedź niepoprawna. Tester nie 'wymusza' działań, a raczej sygnalizuje ryzyka i niejasności.",
+            "D": "Odpowiedź niepoprawna. Tu chodzi o kompletność i jednoznaczność wymagań, a nie o wydajność systemu."
+        }
+    },
+
+    # ===== PYTANIE 17 – TESTY, KTÓRYCH NIE DA SIĘ ZAPLANOWAĆ Z GÓRY =====
+    {
+        "id": 17,
+        "text": "Które z poniższych testów zazwyczaj NIE mogą być zaplanowane z góry?",
+        "options": {
+            "A": "Testy regresji.",
+            "B": "Opcjonalne testy akceptacyjne OAT (Operational Acceptance Testing).",
+            "C": "Testy akceptacyjne UAT użytkownika.",
+            "D": "Testy potwierdzające (retesty)."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Testy regresji planuje się już na etapie planowania testów – wiadomo, że będą wykonywane po zmianach.",
+            "B": (
+                "Odpowiedź poprawna. OAT zależą od realnych warunków operacyjnych i decyzji zespołów operacyjnych, "
+                "często zapadających dopiero przy wdrożeniu – nie da się ich w pełni zaplanować z góry."
+            ),
+            "C": "Odpowiedź niepoprawna. UAT to formalny etap, który można zaplanować z wyprzedzeniem.",
+            "D": "Odpowiedź niepoprawna. Retesty są elementem planu testów – wiadomo, że po usunięciu defektów trzeba je wykonać."
+        }
+    },
+
+    # ===== PYTANIE 18 – CELE TESTOWANIA =====
+    {
+        "id": 18,
+        "text": "Które z poniższych NIE jest typowym celem testowania?",
+        "options": {
+            "A": "Sprawdzenie, czy przedmiot testów jest kompletny.",
+            "B": "Wykrycie jak największej liczby awarii w czasie testów akceptacyjnych.",
+            "C": "Obniżenie poziomu ryzyka wystąpienia niewykrytych wcześniej awarii podczas eksploatacji oprogramowania.",
+            "D": "Budowanie zaufania do poziomu jakości testowanego systemu."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Testowanie pomaga ocenić, czy przedmiot testów jest kompletny i zgodny z wymaganiami.",
+            "B": (
+                "Odpowiedź poprawna. Celem testów akceptacyjnych nie jest 'wyłapanie jak największej liczby awarii', "
+                "lecz sprawdzenie, czy system spełnia potrzeby biznesowe i jest gotowy do wdrożenia. "
+                "Ogólnie celem testowania nie jest maksymalizacja liczby znalezionych awarii."
+            ),
+            "C": "Odpowiedź niepoprawna. Obniżanie ryzyka awarii w eksploatacji jest kluczowym celem testowania.",
+            "D": "Odpowiedź niepoprawna. Budowanie zaufania do jakości systemu to również typowy cel testowania."
+        }
+    },
+
+    # ===== PYTANIE 19 – DEFINICJA USTERKI =====
+    {
+        "id": 19,
+        "text": "Usterka to:",
+        "options": {
+            "A": "Działanie człowieka powodujące powstanie nieprawidłowego wyniku.",
+            "B": "Materializacja w kodzie pomyłki twórcy oprogramowania.",
+            "C": "Odchylenie od spodziewanego zachowania oprogramowania.",
+            "D": "Przypadek testowy sprawdzający reakcję systemu na błędne dane."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. To opis błędu ludzkiego (error), a nie usterki (defektu) w produkcie.",
+            "B": "Odpowiedź poprawna. Usterka (defekt) to pomyłka twórcy oprogramowania, która została utrwalona w kodzie lub innych artefaktach.",
+            "C": "Odpowiedź niepoprawna. To opis awarii (failure) – widocznego odstępstwa zachowania systemu od oczekiwań.",
+            "D": "Odpowiedź niepoprawna. To opis przypadku testowego, a nie usterki."
+        }
+    },
+
+    # ===== PYTANIE 20 – KLASY RÓWNOWAŻNOŚCI (ZAKRES 1–50) =====
+    {
+        "id": 20,
+        "text": (
+            "System przyjmuje numer poziomu gracza w zakresie 1–50.\n"
+            "Jeśli gracz poda wartość spoza tego zakresu, system wyświetla komunikat o błędzie.\n\n"
+            "Która z poniższych wartości należy do NIEPRAWIDŁOWEJ klasy równoważności?"
+        ),
+        "options": {
+            "A": "25",
+            "B": "1",
+            "C": "0",
+            "D": "50"
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. 25 leży wewnątrz zakresu 1–50, więc należy do poprawnej klasy równoważności.",
+            "B": "Odpowiedź niepoprawna. 1 to wartość minimalna, ale wciąż w zakresie – poprawna klasa równoważności.",
+            "C": (
+                "Odpowiedź poprawna. 0 znajduje się poza zakresem 1–50, więc należy do niepoprawnej klasy równoważności, "
+                "dla której system powinien zwrócić komunikat o błędzie."
+            ),
+            "D": "Odpowiedź niepoprawna. 50 to wartość maksymalna w dopuszczalnym zakresie – poprawna klasa równoważności."
+        }
+    },
+
+    # ===== PYTANIE 21 – KLASY RÓWNOWAŻNOŚCI – SYSTEM BANKOWY =====
+    {
+        "id": 21,
+        "text": (
+            "System bankowy umożliwia złożenie wniosku o kartę kredytową.\n"
+            "Wniosek zostanie przyjęty tylko wtedy, gdy wszystkie warunki są spełnione:\n\n"
+            "1) Wiek: 18–70 lat (włącznie)\n"
+            "2) Dochód miesięczny: minimum 3000 zł\n"
+            "3) Zatrudnienie: „umowa o pracę”, „umowa zlecenie”, „działalność gospodarcza”\n"
+            "4) Dochód musi być liczbą całkowitą\n\n"
+            "Która z poniższych osób należy do niepoprawnej klasy równoważności, czyli jej wniosek zostanie odrzucony?"
+        ),
+        "options": {
+            "A": "Anna, 25 lat, dochód 4500 zł, zatrudnienie: „umowa o pracę”.",
+            "B": "Marek, 71 lat, dochód 9000 zł, zatrudnienie: „umowa o pracę”.",
+            "C": "Katarzyna, 40 lat, dochód 2999 zł, zatrudnienie: „działalność gospodarcza”.",
+            "D": "Tomasz, 33 lata, dochód 4000.50 zł, zatrudnienie: „umowa zlecenie”."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Anna spełnia wszystkie warunki: wiek w przedziale, dochód ≥ 3000 zł, prawidłowy typ zatrudnienia, dochód całkowity.",
+            "B": "Odpowiedź niepoprawna. Marek narusza warunek wieku (71 lat), ale pytanie ukierunkowane jest na klasę 'dochód za niski', reprezentowaną przez Katarzynę.",
+            "C": (
+                "Odpowiedź poprawna. Katarzyna ma dochód 2999 zł, czyli poniżej wymaganego minimum 3000 zł – "
+                "jej dane należą do niepoprawnej klasy równoważności 'dochód za niski'."
+            ),
+            "D": "Odpowiedź niepoprawna. Tomasz ma dochód niecałkowity (4000,50), co również jest niepoprawną klasą, ale w pytaniu szukamy klasy 'dochód za niski'."
+        }
+    },
+
+    # ===== PYTANIE 22 – WARTOŚCI BRZEGOWE – WAGA BAGAŻU =====
+    {
+        "id": 22,
+        "text": (
+            "System rezerwacji lotów linii lotniczych „SkyWorld” umożliwia pasażerom zakup biletu online.\n"
+            "Podczas rezerwacji użytkownik musi wybrać wagę bagażu rejestrowanego, którą chce dokupić.\n"
+            "System stosuje następujące zasady:\n\n"
+            "1) Minimalna dopuszczalna waga bagażu to 0 kg (brak bagażu).\n"
+            "2) Maksymalna dopuszczalna waga bagażu to 32 kg.\n"
+            "3) Jeśli użytkownik wprowadzi wagę mniejszą niż 0 kg lub większą niż 32 kg, system musi natychmiast wyświetlić komunikat:\n"
+            "   „Waga niedozwolona – wybierz wartość z zakresu 0–32 kg”.\n"
+            "4) Waga bagażu może być podawana tylko jako liczba całkowita.\n\n"
+            "Jako tester przygotowujesz zestaw testów opartych na analizie wartości brzegowych.\n"
+            "Która z poniższych wartości stanowi najbardziej odpowiednią wartość brzegową po stronie niepoprawnych danych,\n"
+            "która powinna wywołać komunikat błędu?"
+        ),
+        "options": {
+            "A": "0 kg",
+            "B": "1 kg",
+            "C": "33 kg",
+            "D": "32 kg"
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. 0 kg to dolna poprawna granica – wartość brzegowa, ale poprawna.",
+            "B": "Odpowiedź niepoprawna. 1 kg jest wewnątrz zakresu i nie jest wartością brzegową dla danych niepoprawnych.",
+            "C": (
+                "Odpowiedź poprawna. 33 kg leży tuż powyżej górnej granicy 32 kg, czyli jest klasyczną niepoprawną wartością "
+                "brzegową po stronie 'za dużo', która powinna wywołać komunikat błędu."
+            ),
+            "D": "Odpowiedź niepoprawna. 32 kg to górna granica poprawnego zakresu, więc należy do poprawnych danych brzegowych."
+        }
+    },
+
+    # ===== PYTANIE 23 – BVA + BEZPIECZEŃSTWO – WIEK PILOTA =====
+    {
+        "id": 23,
+        "text": (
+            "System rekrutacyjny przyjmuje kandydatów na stanowisko pilota tylko wtedy, gdy spełniają warunek wieku:\n"
+            "Minimalny wiek: 21 lat, maksymalny wiek: 60 lat.\n\n"
+            "System w przypadku błędów zachowuje się inaczej zależnie od kierunku naruszenia:\n"
+            "• Jeśli kandydat ma mniej niż 18 lat, system zwraca komunikat:\n"
+            "  „Niepełnoletni – aplikacja odrzucona natychmiast”.\n"
+            "• Jeśli kandydat ma 18–20 lat, system zwraca komunikat:\n"
+            "  „Wiek niewystarczający”.\n"
+            "• Jeśli kandydat ma powyżej 60 lat, system zwraca komunikat:\n"
+            "  „Przekroczony limit wieku”.\n\n"
+            "Przedziały można opisać tak:\n"
+            "  NIEPEŁNOLETNI      ZA MŁODY             DOZWOLONY WIEK            ZA STARY\n"
+            "  0–17 lat           18–20 lat             21–60 lat                 61+ lat\n\n"
+            "Jako tester tworzysz testy BVA, ale Twoim zadaniem jest wybrać najbardziej krytyczną niepoprawną wartość brzegową, która:\n"
+            "1) znajduje się tuż przy granicy,\n"
+            "2) należy do obszaru „niepełnoletni”,\n"
+            "3) wywołuje inny komunikat błędu niż standardowy,\n"
+            "4) i jest najbardziej ryzykowna z punktu widzenia bezpieczeństwa.\n\n"
+            "Którą wartość wybierzesz?"
+        ),
+        "options": {
+            "A": "20",
+            "B": "18",
+            "C": "17",
+            "D": "21"
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. 20 lat należy do strefy 'wiek niewystarczający', a nie 'niepełnoletni'.",
+            "B": "Odpowiedź niepoprawna. 18 lat to również obszar 'wiek niewystarczający', nie 'niepełnoletni'.",
+            "C": (
+                "Odpowiedź poprawna. 17 lat jest wartością brzegową między niepełnoletniością a pełnoletniością, "
+                "należy do obszaru 'niepełnoletni' i wywołuje specjalny, ostrzejszy komunikat – krytyczny z punktu widzenia bezpieczeństwa."
+            ),
+            "D": "Odpowiedź niepoprawna. 21 lat to dolna granica przedziału dozwolonego, czyli wartość poprawna."
+        }
+    },
+
+    # ===== PYTANIE 24 – ROLA TESTERA NA RETROSPEKTYWIE =====
+    {
+        "id": 24,
+        "text": (
+            "Które z poniższych zdań NAJLEPIEJ opisuje działania testera uczestniczącego w spotkaniu retrospektywnym?"
+        ),
+        "options": {
+            "A": "Tester podnosi jedynie kwestie dotyczące testowania – wszystkie inne tematy zostaną poruszone przez któregoś z pozostałych uczestników.",
+            "B": "Tester jest obserwatorem upewniającym się, że spotkanie przebiega zgodnie z zasadami retrospektywy i wartościami metodyk zwinnych.",
+            "C": "Tester dostarcza informację zwrotną i inne informacje dotyczące wszystkich czynności wykonanych przez zespół w ukończonej iteracji.",
+            "D": "Tester zbiera informacje przekazane przez innych uczestników spotkania, aby na ich podstawie zaprojektować testy dla kolejnej iteracji."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Tester nie ogranicza się tylko do testowania – retrospektywa dotyczy całej pracy zespołu.",
+            "B": "Odpowiedź niepoprawna. Tester nie jest tylko obserwatorem – jest pełnoprawnym, aktywnym uczestnikiem retro.",
+            "C": (
+                "Odpowiedź poprawna. Tester na retrospektywie przekazuje informację zwrotną dotyczącą całej iteracji: problemów, ryzyk, usprawnień, współpracy, nie tylko samych testów."
+            ),
+            "D": "Odpowiedź niepoprawna. Celem retrospektywy nie jest projektowanie testów, lecz analiza i usprawnianie sposobu pracy zespołu."
+        }
+    },
+
+    # ===== PYTANIE 26 – MODEL V I ROLA TESTERA =====
+    {
+        "id": 26,
+        "text": (
+            "Jesteś testerem w projekcie polegającym na stworzeniu oprogramowania autopilota do samochodu. "
+            "Projekt jest prowadzony zgodnie z modelem V.\n\n"
+            "Które z poniższych stwierdzeń NAJLEPIEJ opisuje rolę testera w takim projekcie?"
+        ),
+        "options": {
+            "A": "Nacisk w testowaniu położony zostanie na testowanie oparte na doświadczeniu.",
+            "B": "Zespół testerski nie będzie przeprowadzał testów statycznych.",
+            "C": "Po ukończeniu pierwszej iteracji dostępny będzie prototyp systemu.",
+            "D": "Testerzy w początkowych fazach uczestniczą w przeglądach wymagań, analizie i projektowaniu testów."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. W modelu V nacisk kładziony jest głównie na testowanie oparte na dokumentacji i analizie, a nie wyłącznie na doświadczeniu.",
+            "B": "Odpowiedź niepoprawna. Testy statyczne (przeglądy, analiza dokumentów) są kluczowe w modelu V i testerzy aktywnie je wykonują.",
+            "C": "Odpowiedź niepoprawna. Model V nie jest modelem iteracyjnym ani zwinnym – nie zakłada prototypu po 'pierwszej iteracji'.",
+            "D": (
+                "Odpowiedź poprawna. W modelu V testerzy zaczynają pracę bardzo wcześnie: uczestniczą w przeglądach wymagań, "
+                "analizują dokumentację, projektują testy dla przyszłych poziomów testów – zanim jeszcze powstanie kod."
+            )
+        }
+    },
+
+    # ===== PYTANIE 27 – PARETO =====
+    {
+        "id": 27,
+        "text": (
+            "Zgodnie z zasadą Pareto większość problemów jest spodziewana w małej liczbie obszarów systemu. "
+            "Która zasada testowania NAJLEPIEJ odpowiada tej sytuacji?"
+        ),
+        "options": {
+            "A": "Testowanie ujawnia błędy, ale nie dowodzi ich braku.",
+            "B": "Testowanie gruntowne nie jest możliwe.",
+            "C": "Komunikowanie się defektów.",
+            "D": "Testowanie zależy od kontekstu."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Ta zasada mówi, że nawet jeśli nie widzimy awarii po testach, nie możemy mieć pewności, "
+                "że system jest bezbłędny. Nie odnosi się do koncentracji problemów w niewielkiej liczbie obszarów."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Zasada 'testowanie gruntowne nie jest możliwe' dotyczy niemożności przetestowania "
+                "wszystkich kombinacji danych i ścieżek, ale nie opisuje skupiania się problemów w małej liczbie miejsc."
+            ),
+            "C": (
+                "Odpowiedź poprawna. Skoro większość problemów koncentruje się w niewielu obszarach (zasada Pareto), "
+                "kluczowe jest dobre komunikowanie defektów – gdzie dokładnie występują, jak często, z jaką wagą – "
+                "żeby zespół mógł skupić wysiłek na najbardziej problematycznych częściach systemu."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. 'Testowanie zależy od kontekstu' dotyczy doboru strategii do typu systemu, ryzyka czy domeny, "
+                "a nie rozmieszczenia defektów ani sposobu komunikowania się o nich."
+            )
+        }
+    },
+
+    # ===== PYTANIE 28 – KLASY RÓWNOWAŻNOŚCI – PRZELEW =====
+    {
+        "id": 28,
+        "text": (
+            "System bankowy pozwala użytkownikowi wykonać przelew jednorazowy na dowolne konto.\n"
+            "Pole „Kwota przelewu” przyjmuje tylko wartości:\n\n"
+            "• od 1 zł do 10 000 zł (włącznie)\n"
+            "• wartości muszą być liczbami całkowitymi\n\n"
+            "Jesteś testerem i masz przygotować testy czarnoskrzynkowe bez znajomości kodu.\n"
+            "Który z poniższych przypadków testowych NAJLEPIEJ reprezentuje test oparty na technice "
+            "czarnoskrzynkowej – klasach równoważności?"
+        ),
+        "options": {
+            "A": "Kwota = 0 zł",
+            "B": "Kwota = 5000 zł",
+            "C": "Kwota = -10 zł",
+            "D": "Sprawdzenie, czy kod weryfikuje kwotę w funkcji validateAmount()."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. 0 zł jest poza zakresem poprawnych wartości – jest przykładem niepoprawnej klasy, "
+                "ale pytanie pyta o najlepszy przykład testu dla klas równoważności po stronie danych poprawnych."
+            ),
+            "B": (
+                "Odpowiedź poprawna. 5000 zł leży wewnątrz zakresu 1–10 000 zł i reprezentuje poprawną klasę równoważności, "
+                "nie jest wartością brzegową – to typowy przykład testu black-box opartego na klasach równoważności."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. -10 zł jest niepoprawną wartością, ale bardzo odległą od zakresu i słabo reprezentatywną jako klasa testowa."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. To odwołanie się do konkretnej funkcji w kodzie (validateAmount), czyli test białoskrzynkowy, "
+                "a nie czarnoskrzynkowy."
+            )
+        }
+    },
+
+    # ===== PYTANIE 29 – TABELA DECYZYJNA – ZNIŻKA =====
+    {
+        "id": 29,
+        "text": (
+            "System rezerwacji lotów oferuje automatyczną zniżkę 10% na bilet, jeśli spełnione zostaną wszystkie poniższe warunki:\n\n"
+            "• Pasażer kwalifikuje się wiekowo, tzn. ma co najmniej 60 lat LUB posiada kartę stałego klienta Silver lub Gold.\n"
+            "• Lot odbywa się w dniu roboczym (poniedziałek–piątek).\n"
+            "• Pasażer nie wykupił usługi dodatkowej „Bagaż Premium”, która wyklucza promocję.\n\n"
+            "Jako tester przygotowujesz przypadki testowe zgodnie z techniką czarnoskrzynkową – tabelą decyzyjną, "
+            "testującą kombinacje warunków wejściowych.\n\n"
+            "Wskaż, który scenariusz spełnia wszystkie warunki promocji, a więc powinien skutkować naliczeniem zniżki 10%:"
+        ),
+        "options": {
+            "A": (
+                "Wiek: 45 lat\n"
+                "Status: Gold\n"
+                "Dzień lotu: środa\n"
+                "Usługi dodatkowe: wykupiono „Bagaż Premium”"
+            ),
+            "B": (
+                "Wiek: 62 lata\n"
+                "Status: brak Silver/Gold\n"
+                "Dzień lotu: sobota\n"
+                "Usługi dodatkowe: brak „Bagażu Premium”"
+            ),
+            "C": (
+                "Wiek: 70 lat\n"
+                "Status: brak Silver/Gold\n"
+                "Dzień lotu: wtorek\n"
+                "Usługi dodatkowe: brak „Bagażu Premium”"
+            ),
+            "D": (
+                "Wiek: 30 lat\n"
+                "Status: Silver\n"
+                "Dzień lotu: poniedziałek\n"
+                "Usługi dodatkowe: wykupiono „Bagaż Premium”"
+            )
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Klient ma status Gold i dzień lotu to środa (dzień roboczy), "
+                "ale wykupiono „Bagaż Premium”, który automatycznie wyklucza promocję."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Wiek 62 lata spełnia warunek, brak „Bagażu Premium” też, "
+                "ale lot odbywa się w sobotę, czyli poza dniem roboczym – warunek dnia nie jest spełniony."
+            ),
+            "C": (
+                "Odpowiedź poprawna. Pasażer ma 70 lat (spełnia kryterium wiekowe ≥ 60), "
+                "lot jest we wtorek (dzień roboczy) oraz nie ma wykupionej usługi „Bagaż Premium”. "
+                "Spełnione są wszystkie warunki promocji, więc system powinien naliczyć zniżkę 10%."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Pasażer ma kartę Silver i leci w poniedziałek (dzień roboczy), "
+                "ale wykupił „Bagaż Premium”, co wyklucza promocję niezależnie od pozostałych warunków."
+            )
+        }
+    },
+
+    # ===== PYTANIE 30 – PIRAMIDA TESTÓW =====
+    {
+        "id": 30,
+        "text": "Jaką korzyść testerowi daje piramida testów?",
+        "options": {
+            "A": "Piramida testów objaśnia pojęcia związane z poziomami testów.",
+            "B": "Piramida wskazuje na potrzebę posiadania dużej liczby testów automatycznych na poziomie testów modułowych.",
+            "C": "Piramida testów jest dobrą metryką testową obliczającą granularność na różnych poziomach testów.",
+            "D": "Piramida testów jest bardzo pomocna przy szacowaniu potrzebnej liczby testów."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Pojęcia związane z poziomami testów (modułowe, integracyjne, systemowe itd.) "
+                "wyjaśnia koncepcja poziomów testów, a nie piramida. Piramida skupia się na proporcjach liczby testów."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Piramida testów pokazuje, że najwięcej testów automatycznych powinno być na poziomie "
+                "testów modułowych (unit testów), mniej na poziomie integracji, a najmniej na poziomie testów systemowych/UI. "
+                "Wskazuje więc, gdzie warto inwestować w najliczniejszą automatyzację."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Piramida testów nie jest metryką – to model koncepcyjny, nie daje konkretnych wartości liczbowych "
+                "ani nie 'oblicza' granularności."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Piramida mówi o proporcjach typów testów (ile których w przybliżeniu), "
+                "a nie służy do precyzyjnego szacowania całkowitej liczby testów."
+            )
+        }
+    },
+
+    # ===== PYTANIE 31 – UMIEJĘTNOŚCI TESTERA =====
+    {
+        "id": 31,
+        "text": (
+            "Które z poniższych umiejętności (i–v) są NAJBARDZIEJ ISTOTNYMI umiejętnościami w pracy testera?\n\n"
+            "i. Posiadanie wiedzy merytorycznej.\n"
+            "ii. Tworzenie wizji produktu.\n"
+            "iii. Umiejętność sprawnej pracy w zespole.\n"
+            "iv. Planowanie i organizowanie pracy zespołu.\n"
+            "v. Krytyczne myślenie."
+        ),
+        "options": {
+            "A": "Umiejętności ii oraz iv.",
+            "B": "Umiejętności i, iii oraz v.",
+            "C": "Umiejętności i, ii oraz v.",
+            "D": "Umiejętności iii oraz iv."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Tworzenie wizji produktu (ii) oraz organizowanie pracy zespołu (iv) "
+                "to odpowiedzialność Product Ownera lub kierownika — nie kluczowe kompetencje testera."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Tester powinien posiadać wiedzę merytoryczną (i), potrafić dobrze współpracować "
+                "w zespole (iii) oraz myśleć krytycznie (v) — to jedne z najważniejszych umiejętności w roli testera."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Tworzenie wizji produktu (ii) nie należy do zadań testera."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Organizowanie pracy zespołu (iv) to zadanie kierownika, nie testera."
+            )
+        }
+    },
+
+    # ===== PYTANIE 32 – KRYTERIA AKCEPTACJI =====
+    {
+        "id": 32,
+        "text": (
+            "Które z poniższych stwierdzeń NAJLEPIEJ opisuje sposób, w jaki można udokumentować "
+            "kryteria akceptacji?"
+        ),
+        "options": {
+            "A": "Przeprowadzenie retrospektywy w celu ustalenia rzeczywistych potrzeb interesariuszy dotyczących danej historyjki użytkownika.",
+            "B": "Opisanie przykładowego warunku testowego związanego z daną historyjką użytkownika w formacie Given/When/Then (Mając/Kiedy/Wtedy).",
+            "C": "Słowne przekazanie informacji w celu zmniejszenia ryzyka błędnego zrozumienia kryteriów akceptacji przez inne osoby.",
+            "D": "Udokumentowanie ryzyk związanych z daną historyjką użytkownika w planie testów."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Retrospektywy służą usprawnianiu procesu i analizie pracy zespołu, "
+                "a nie dokumentowaniu kryteriów akceptacji."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Format Given/When/Then (Gherkin) jest standardowym sposobem "
+                "zapisywania kryteriów akceptacji w metodykach zwinnych."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Słowna komunikacja nie jest formą dokumentacji kryteriów akceptacji; "
+                "jest to jedynie część modelu komunikacji (np. element 'Conversation' w modelu 3C)."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Kryteria akceptacji dotyczą warunków ukończenia historyjki użytkownika, "
+                "a nie ryzyk, które umieszcza się w planie testów."
+            )
+        }
+    },
+
+    # ===== PYTANIE 33 – SZACOWANIE TRÓJPUNKTOWE =====
+    {
+        "id": 33,
+        "text": (
+            "Twój zespół szacuje pracochłonność testowania nowej funkcjonalności obarczonej dużym ryzykiem, "
+            "korzystając z techniki szacowania trójpunktowego. Przygotowano następujące oszacowania:\n"
+            "• najbardziej optymistyczne: 2 osobogodziny;\n"
+            "• najbardziej prawdopodobne: 11 osobogodzin;\n"
+            "• najbardziej pesymistyczne: 14 osobogodzin.\n"
+            "Jaka jest ostateczna szacowana wartość?"
+        ),
+        "options": {
+            "A": "9 osobogodzin.",
+            "B": "14 osobogodzin.",
+            "C": "11 osobogodzin.",
+            "D": "10 osobogodzin."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. 9 nie wynika z żadnego modelu liczenia w technice trójpunktowej."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. 14 to wartość pesymistyczna, a nie końcowy wynik estymacji."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. 11 to wartość najbardziej prawdopodobna, ale technika trójpunktowa "
+                "stosuje uśrednienie ważone – nie wybiera wartości M."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Obliczenie zgodnie ze wzorem (O + 4M + P) / 6 = (2 + 44 + 14) / 6 = 60 / 6 = 10. "
+                "Końcowy wynik to 10 osobogodzin."
+            )
+        }
+    },
+
+    # ===== PYTANIE 34 – PRIORYTETY I ZALEŻNOŚCI =====
+    {
+        "id": 34,
+        "text": (
+            "Testujesz aplikację mobilną, która umożliwia użytkownikom znajdowanie pobliskich restauracji "
+            "na podstawie rodzaju serwowanej kuchni. Masz listę przypadków testowych z priorytetami "
+            "(mniejsza liczba = wyższy priorytet) oraz zależnościami. "
+            "Który przypadek testowy powinien zostać wykonany jako trzeci?"
+        ),
+        "options": {
+            "A": "PT 003",
+            "B": "PT 005",
+            "C": "PT 002",
+            "D": "PT 001"
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. PT 003 ma najwyższy priorytet (1), ale może zostać wykonany dopiero po PT 001 "
+                "i PT 002, od których zależy. Kolejność wymuszona zależnościami to: PT 001 → PT 002 → PT 003. "
+                "Dlatego PT 003 jest trzecim wykonywanym testem."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. PT 005 ma niski priorytet (3) i zależy od PT 002, więc nie może być "
+                "wykonany przed PT 003, który ma priorytet 1."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. PT 002 jest drugim testem w kolejności, ponieważ wymaga PT 001."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. PT 001 jest wykonywany jako pierwszy, bo nie ma zależności."
+            )
+        }
+    },
+
+    # ===== PYTANIE 35 – ZARZĄDZANIE KONFIGURACJĄ =====
+    {
+        "id": 35,
+        "text": (
+            "Musisz zaktualizować jeden ze skryptów testów automatycznych, aby dostosować go do nowego "
+            "wymagania. Który proces pozwala zarejestrować w repozytorium testów utworzenie nowej wersji "
+            "skryptu testowego?"
+        ),
+        "options": {
+            "A": "Zarządzanie śledzeniem powiązań.",
+            "B": "Testowanie pielęgnacyjne.",
+            "C": "Zarządzanie konfiguracją.",
+            "D": "Inżynieria wymagań."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Zarządzanie śledzeniem powiązań dotyczy powiązań między "
+                "wymaganiami, testami i defektami — nie wersjonowania skryptów."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Testowanie pielęgnacyjne oznacza utrzymywanie i aktualizację testów, "
+                "ale nie rejestrowanie nowych wersji artefaktów w repozytorium."
+            ),
+            "C": (
+                "Odpowiedź poprawna. Zarządzanie konfiguracją (Configuration Management) odpowiada za kontrolę wersji, "
+                "rejestrowanie zmian oraz utrzymywanie historii artefaktów testowych, w tym skryptów automatycznych."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Inżynieria wymagań dotyczy analizy, dokumentowania i zarządzania wymaganiami, "
+                "a nie wersjonowania skryptów testowych."
+            )
+        }
+    },
+
+    # ===== PYTANIE 36 – PODEJŚCIE „NAJPIERW TEST” =====
+    {
+        "id": 36,
+        "text": (
+            "Która z następujących odpowiedzi przedstawia przykład podejścia „najpierw test” "
+            "do wytwarzania oprogramowania?"
+        ),
+        "options": {
+            "A": "Wytwarzanie sterowane testami.",
+            "B": "Wytwarzanie sterowane pokryciem.",
+            "C": "Wytwarzanie sterowane jakością.",
+            "D": "Wytwarzanie sterowane cechami."
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Wytwarzanie sterowane testami (TDD) jest klasycznym przykładem podejścia "
+                "„najpierw test”, w którym najpierw powstaje test, a dopiero później implementacja."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Wytwarzanie sterowane pokryciem nie jest przykładem podejścia „najpierw test”."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Wytwarzanie sterowane jakością nie jest podejściem typu „najpierw test”."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Wytwarzanie sterowane cechami (FDD) to metodyka zwinna oparta na realizacji cech, "
+                "a nie podejście typu „najpierw test”."
+            )
+        }
+    },
+
+    # ===== PYTANIE 37 – NIEFUNKCJONALNE – NIEZAWODNOŚĆ =====
+    {
+        "id": 37,
+        "text": (
+            "Aplikacja streamingowa „CinemaGo” umożliwia użytkownikom oglądanie filmów. "
+            "Nowe wymaganie mówi: „Użytkownik powinien móc wznowić odtwarzanie filmu dokładnie w tym "
+            "samym miejscu, w którym zakończył, nawet jeśli od ostatniego użycia minęły co najmniej 72 godziny, "
+            "a aplikacja była kilkukrotnie uruchamiana ponownie.”\n\n"
+            "Tester przygotowuje scenariusz obejmujący wielokrotne ponowne uruchamianie aplikacji, przerwy "
+            "czasowe, zmianę urządzeń oraz kilkukrotne logowanie. "
+            "Jaki rodzaj testów niefunkcjonalnych najlepiej opisuje tę sytuację?"
+        ),
+        "options": {
+            "A": "Testy wytrzymałościowe (endurance / soak testing).",
+            "B": "Testy niezawodności i odporności na błędy (reliability & robustness).",
+            "C": "Testy użyteczności (usability).",
+            "D": "Testy kompatybilności (compatibility testing)."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Testy wytrzymałościowe badają zachowanie systemu pod długotrwałym obciążeniem, "
+                "a nie odporność działania na restart, zmianę urządzeń czy długie przerwy."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Tester sprawdza odporność aplikacji na restart, wylogowania, zmianę kontekstu, "
+                "oraz trwałość zapamiętywania stanu przez długi czas. To typowe testy niezawodności i odporności na błędy."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Testy użyteczności dotyczą ergonomii, wygody użycia i wyglądu — nie zachowania aplikacji "
+                "w czasie przerw ani jej odporności na restart."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testy kompatybilności dotyczą działania na różnych urządzeniach i systemach, "
+                "a tutaj główny cel to niezawodność i odporność aplikacji na przerwy oraz restart."
+            )
+        }
+    },
+
+    # ===== PYTANIE 38 – TESTOWANIE EKSPLORACYJNE =====
+    {
+        "id": 38,
+        "text": (
+            "Wskaż DWA stwierdzenia, które przedstawiają NAJLEPSZE uzasadnienie zastosowania "
+            "testowania eksploracyjnego."
+        ),
+        "options": {
+            "A": "Testerom nie przydzielono wystarczająco dużo czasu na zaprojektowanie i wykonanie testów.",
+            "B": "Istniejąca strategia testów wymaga użycia formalnych, czarnoskrzynkowych technik testowania.",
+            "C": "Specyfikacja została zapisana w języku formalnym, który może być przetwarzany przez narzędzie.",
+            "D": "Testerzy są członkami zespołu zwinnego i mają duże umiejętności programistyczne.",
+            "E": "Testerzy mają doświadczenie w danej dziedzinie biznesowej i duże umiejętności analityczne."
+        },
+        "correct": ["A", "E"],
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Testowanie eksploracyjne jest szczególnie skuteczne, gdy brakuje czasu "
+                "na formalne projektowanie testów lub gdy dokumentacja jest niepełna."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Testowanie eksploracyjne nie jest formalną techniką czarnoskrzynkową."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Języki formalne ułatwiają projektowanie testów, ale nie są powodem "
+                "do stosowania testowania eksploracyjnego."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Umiejętności programistyczne nie mają istotnego związku "
+                "z testowaniem eksploracyjnym."
+            ),
+            "E": (
+                "Odpowiedź poprawna. Testowanie eksploracyjne jest szczególnie skuteczne, gdy tester ma "
+                "dużą wiedzę domenową, kreatywność i silne umiejętności analityczne."
+            )
+        }
+    },
+
+    # ===== PYTANIE 39 – DEFEKT =====
+    {
+        "id": 39,
+        "text": "Defekt to…",
+        "options": {
+            "A": "Pozytywny wynik testu.",
+            "B": "Odchylenie produktu od oczekiwanego zachowania.",
+            "C": "Błąd testera popełniony podczas wykonywania testu.",
+            "D": "Każda funkcja dodana w nowej wersji aplikacji."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Pozytywny wynik testu oznacza, że test przeszedł poprawnie — "
+                "nie ma to nic wspólnego z defektem."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Defekt to każde odchylenie produktu od oczekiwanego zachowania, "
+                "zgodnie z definicją ISTQB."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Błąd testera to pomyłka ludzka (error), a nie defekt w produkcie."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Nowa funkcjonalność nie jest defektem — jest rozszerzeniem produktu."
+            )
+        }
+    },
+
+    # ===== PYTANIE 40 – MONITOROWANIE TESTÓW =====
+    {
+        "id": 40,
+        "text": "Co jest głównym celem monitorowania testów?",
+        "options": {
+            "A": "Sprawdzenie, czy testerzy znaleźli wszystkie defekty.",
+            "B": "Śledzenie postępu testów względem planu.",
+            "C": "Tworzenie nowych przypadków testowych.",
+            "D": "Weryfikacja wymagań przed rozpoczęciem testowania."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Nigdy nie da się stwierdzić, że znaleziono wszystkie defekty — "
+                "testowanie ujawnia błędy, ale nie dowodzi ich braku."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Monitorowanie testów polega na śledzeniu i raportowaniu postępu pracy testowej "
+                "w porównaniu z planem, m.in. wykonania testów, zużycia czasu i liczby defektów."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Tworzenie przypadków testowych to projektowanie testów, nie monitorowanie."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Weryfikacja wymagań to część testów statycznych, nie monitorowania testów."
+            )
+        }
+    },
+
+    # ===== PYTANIE 41 – TESTY ALFA / BETA =====
+    {
+        "id": 41,
+        "text": (
+            "Które stwierdzenie najlepiej opisuje różnicę pomiędzy testami alfa a testami beta?"
+        ),
+        "options": {
+            "A": "Testy alfa wykonują użytkownicy końcowi, a testy beta – zespół deweloperski.",
+            "B": "Testy alfa są wykonywane w kontrolowanym środowisku organizacji, a testy beta u użytkowników w rzeczywistych warunkach.",
+            "C": "Testy alfa i beta to ten sam rodzaj testów, ale wykonywany z różnym priorytetem.",
+            "D": "Testy beta zawsze obejmują testy automatyczne, a testy alfa wyłącznie manualne."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Jest odwrotnie: testy alfa wykonuje zespół firmy, a testy beta – użytkownicy końcowi."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Testy alfa odbywają się w kontrolowanym środowisku organizacji, "
+                "natomiast testy beta wykonują użytkownicy w naturalnych, rzeczywistych warunkach."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Alfa i beta to różne typy testów akceptacyjnych, a nie ta sama metoda o różnym priorytecie."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testy alfa i beta mogą być zarówno manualne, jak i automatyczne — to nie jest cecha wyróżniająca."
+         )
+        }
+    },
+
+
+
+
+
+
+
+]
+
+
+# =========================================
+# PYTANIA – EGZAMIN 2
+# (inny zestaw, bez powtórek z egzaminu 1)
+# =========================================
+
+QUESTIONS_EXAM2 = [
+  {
+        "id": 1,
+        "text": (
+            "Jedna z zasad testowania mówi, że przekonanie o braku defektów jest błędem.\n"
+            "Która z następujących odpowiedzi przedstawia przykład zastosowania tej zasady w praktyce?"
+        ),
+        "options": {
+            "A": "Wyjaśnienie, że testowanie nie może wykazać braku defektów.",
+            "B": "Wsparcie użytkowników końcowych w wykonywaniu testowania akceptacyjnego.",
+            "C": "Zadbanie o brak defektów implementacji w dostarczonym systemie.",
+            "D": "Zmodyfikowanie testów, które nie powodują awarii, tak aby pozostała pewna liczba defektów."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. To tylko opis słownej formy zasady, a nie jej praktyczne zastosowanie."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Testy akceptacyjne wykonywane przez użytkowników pokazują, że system "
+                "może wciąż nie spełniać ich potrzeb, nawet jeśli nie wykryto defektów technicznych. "
+                "To praktyczne zastosowanie zasady: „brak defektów nie gwarantuje sukcesu systemu”."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Skupienie się wyłącznie na braku defektów implementacji jest właśnie "
+                "przykładem błędnego przekonania, że 'brak defektów = sukces'."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Celowe zostawianie defektów jest sprzeczne z dobrymi praktykami "
+                "i nie jest związane z tą zasadą."
+            )
+        }
+    },
+
+    {
+        "id": 2,
+        "text": (
+            "Oprogramowanie systemu nawigacji zostało poprawione, ponieważ proponowało trasy naruszające "
+            "przepisy ruchu drogowego, np. jazdę pod prąd ulicami jednokierunkowymi.\n"
+            "Która z poniższych odpowiedzi NAJLEPIEJ opisuje testy, które należy przeprowadzić?"
+        ),
+        "options": {
+            "A": "Tylko testowanie potwierdzające.",
+            "B": "Testowanie potwierdzające, a następnie testowanie regresji.",
+            "C": "Tylko testowanie regresji.",
+            "D": "Testowanie regresji, a następnie testowanie potwierdzające."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Testowanie potwierdzające pozwala ustalić, czy "
+                "w efekcie aktualizacji powstała poprawna implementacja, więc jest ono niezbędne. "
+                "Celowe byłoby jednak również przeprowadzenie testów regresji i potwierdzenie, że "
+                "nie wprowadzono ani nie ujawniono defektów w obszarach systemu, które nie podlegały zmianom."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Testowanie potwierdzające pozwala ustalić, czy w efekcie "
+                "aktualizacji powstała poprawna implementacja. Następnie należy przeprowadzić "
+                "testy regresji i potwierdzić, że nie wprowadzono ani nie ujawniono defektów "
+                "w obszarach systemu, które nie podlegały zmianom."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Należy przeprowadzić testy regresji i potwierdzić, że po "
+                "aktualizacji nie wprowadzono ani nie ujawniono defektów w obszarach systemu, "
+                "które nie podlegały zmianom. Niezbędne jest jednak również wykonanie testów "
+                "potwierdzających, że w efekcie aktualizacji powstała poprawna implementacja."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testowanie potwierdzające pozwala ustalić, czy "
+                "w efekcie aktualizacji powstała poprawna implementacja. Następnie należy "
+                "przeprowadzić testy regresji i potwierdzić, że nie wprowadzono ani nie ujawniono "
+                "defektów w obszarach systemu, które nie podlegały zmianom. Jednak w przypadku "
+                "konieczności przetestowania aktualizacji testowanie potwierdzające należy "
+                "wykonać przed testowaniem regresji."
+            )
+        }
+    },
+
+    {
+        "id": 3,
+        "text": (
+            "Testujesz moduł sprawdzania kodu PIN, który akceptuje poprawne kody PIN, a odrzuca "
+            "niepoprawne kody PIN. Kod PIN jest ciągiem cyfr. Poprawna wartość składa się z czterech cyfr, "
+            "a w ciągu muszą wystąpić co najmniej dwie różne cyfry.\n"
+            "Które z poniższych zestawów wejściowych danych testowych pokrywają wszystkie klasy "
+            "równoważności dla tego scenariusza?"
+        ),
+        "options": {
+            "A": "112, 1111, 1234, 123456",
+            "B": "1, 123, 1111, 1234",
+            "C": "12, 112, 1112, 11112",
+            "D": "1, 111, 1111, 11111"
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Klasy równoważności:\n"
+                "– L1 (1–3 cyfry) + D2 → 112\n"
+                "– L2 (4 cyfry) + D1 → 1111\n"
+                "– L2 (4 cyfry) + D2 → 1234\n"
+                "– L3 (>4 cyfry) + D2 → 123456\n"
+                "Zestaw pokrywa wszystkie wymagane klasy równoważności."
+            ),
+            "B": "Odpowiedź niepoprawna. Nie pokrywa klasy L3 (dłuższe niż 4 cyfry).",
+            "C": "Odpowiedź niepoprawna. Nie pokrywa klasy D1 (wszystkie cyfry identyczne).",
+            "D": (
+                "Odpowiedź niepoprawna. Nie pokrywa klasy D2 (co najmniej dwie różne cyfry) "
+                "i nie pokrywa klasy G1 (poprawny PIN)."
+            )
+        }
+    },
+
+    {
+        "id": 4,
+        "text": "W jaki sposób testowanie białoskrzynkowe może wspomóc testowanie czarnoskrzynkowe?",
+        "options": {
+            "A": (
+                "Miary pokrycia stosowane w technikach białoskrzynkowych mogą ułatwić testerom ocenę testów "
+                "czarnoskrzynkowych pod kątem pokrycia kodu przez te testy czarnoskrzynkowe."
+            ),
+            "B": (
+                "Analiza pokrycia w testach białoskrzynkowych może ułatwić testerom zidentyfikowanie "
+                "nieosiągalnych fragmentów kodu źródłowego."
+            ),
+            "C": (
+                "Testowanie gałęzi obejmuje czarnoskrzynkowe techniki testowania, więc uzyskanie pełnego "
+                "pokrycia gałęzi pozwala uzyskać pełne pokrycie w dowolnej technice czarnoskrzynkowej."
+            ),
+            "D": (
+                "Białoskrzynkowe techniki testowania pozwalają określić elementy pokrycia dla "
+                "czarnoskrzynkowych technik testowania."
+            )
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Wykonanie jedynie testowania czarnoskrzynkowego nie pozwala zmierzyć "
+                "faktycznego pokrycia kodu. Miary pokrycia z testów białoskrzynkowych dają obiektywny pomiar "
+                "pokrycia i pomagają wygenerować dodatkowe testy, co zwiększa zaufanie do jakości kodu."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Stwierdzenie jest prawdziwe, ale nie odpowiada na pytanie – "
+                "nie pokazuje, jak białoskrzynkowe testowanie wspiera testy czarnoskrzynkowe."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Techniki białoskrzynkowe nie obejmują zakresem technik "
+                "czarnoskrzynkowych, więc pełne pokrycie gałęzi nie oznacza pełnego pokrycia testami black-box."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Białoskrzynkowe techniki opierają się na strukturze kodu, "
+                "a czarnoskrzynkowe na specyfikacji – elementy pokrycia w obu podejściach są różne "
+                "i nie wynikają bezpośrednio jedno z drugiego."
+            )
+        }
+    },
+
+    {
+        "id": 5,
+        "text": (
+            "Rozpatrzmy następującą listę:\n"
+            "● Brak akceptacji poprawnych danych wejściowych.\n"
+            "● Akceptacja niepoprawnych danych wejściowych.\n"
+            "● Niepoprawny format danych wyjściowych.\n"
+            "● Dzielenie przez zero.\n\n"
+            "Którą technikę NAJPRAWDOPODOBNIEJ stosuje tester korzystający z tej listy podczas przeprowadzania testów?"
+        ),
+        "options": {
+            "A": "Testowanie eksploracyjne.",
+            "B": "Atak usterek.",
+            "C": "Testowanie w oparciu o listę kontrolną.",
+            "D": "Analiza wartości brzegowych."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. W testowaniu eksploracyjnym używa się kart opisu testu, "
+                "a nie listy możliwych defektów/awarii."
+            ),
+            "B": (
+                "Odpowiedź poprawna. To lista możliwych awarii. Atak usterek to metodyczne podejście do "
+                "implementacji zgadywania błędów. Tester przygotowuje listę potencjalnych błędów, defektów "
+                "i awarii, a następnie projektuje testy pozwalające je ujawnić."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. W testowaniu w oparciu o listę kontrolną elementy listy są "
+                "warunkami testowymi, a tutaj mamy listę możliwych awarii, nie warunków testowych."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Analiza wartości brzegowych opiera się na wartościach brzegowych "
+                "klas równoważności. W treści pytania nie ma mowy o klasach równoważności ani ich brzegach."
+            )
+        }
+    },
+
+    {
+        "id": 6,
+        "text": "Które z poniższych spostrzeżeń zostało odzwierciedlone w modelu piramidy testów?",
+        "options": {
+            "A": "Testy mogą mieć różne priorytety.",
+            "B": "Testy mogą mieć różne poziomy szczegółowości.",
+            "C": "Testy mogą wymagać różnych kryteriów pokrycia.",
+            "D": "Testy mogą być zależne od innych testów."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź niepoprawna. Model piramidy testów nie opisuje priorytetów testów.",
+            "B": (
+                "Odpowiedź poprawna. Piramida testów pokazuje, że testy mogą mieć różny poziom "
+                "szczegółowości – od niskopoziomowych testów jednostkowych po wysokopoziomowe testy GUI."
+            ),
+            "C": "Odpowiedź niepoprawna. Model piramidy nie jest zdefiniowany w kategoriach kryteriów pokrycia.",
+            "D": "Odpowiedź niepoprawna. Piramida testów nie odzwierciedla zależności między testami."
+        }
+    },
+
+    {
+        "id": 7,
+        "text": "Jaki istnieje związek między kwadrantami testowymi, poziomami testów i typami testów?",
+        "options": {
+            "A": "Kwadranty testowe reprezentują konkretne kombinacje poziomów testów i typów testów, definiując ich miejsce w cyklu wytwarzania oprogramowania.",
+            "B": "Kwadranty testowe opisują poziom szczegółowości różnych typów testów wykonywanych na każdym poziomie testów.",
+            "C": "Kwadranty testowe odzwierciedlają powiązanie typów testów, które można wykonać, z odpowiednimi poziomami testów.",
+            "D": "Kwadranty testowe grupują poziomy testów i typy testów według różnych kryteriów, ukierunkowując je na potrzeby konkretnych interesariuszy."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Kwadranty testowe nie są mapą poziomów testów do typów testów w cyklu "
+                "wytwórczym, tylko modelem grupowania według innych kryteriów."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Opis bardziej pasuje do piramidy testów (poziom szczegółowości), "
+                "a nie do kwadrantów."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Test dowolnego typu może być wykonany na dowolnym poziomie – "
+                "kwadranty nie narzucają takich powiązań."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Kwadranty testowe grupują poziomy testów, typy testów, czynności "
+                "i produkty pracy według celu (biznesowy/techniczny) oraz funkcji (wspieranie zespołu/krytyka produktu)."
+            )
+        }
+    },
+
+    {
+        "id": 8,
+        "text": (
+            "Które z poniższych stwierdzeń NIE opisuje przykładu wspomagania testowania przez zarządzanie konfiguracją?"
+        ),
+        "options": {
+            "A": "Wszystkie elementy zatwierdzane w repozytorium są jednoznacznie identyfikowane i objęte kontrolą wersji.",
+            "B": "Wszystkie zmiany elementów środowiska testowego podlegają śledzeniu.",
+            "C": "Wszystkie specyfikacje wymagań są przywoływane w sposób jednoznaczny w planach testów.",
+            "D": "Wszystkie zdefiniowane defekty mają przypisany status."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. To klasyczny przykład wsparcia testowania poprzez zarządzanie konfiguracją "
+                "– możemy odtworzyć konkretną wersję systemu i środowiska."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Śledzenie zmian w środowisku testowym pozwala wrócić do poprzedniej wersji, "
+                "gdy zmiana powoduje problemy – to wsparcie testowania przez zarządzanie konfiguracją."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Jednoznaczne przywoływanie specyfikacji wymagań w planach testów to "
+                "również element zarządzania konfiguracją artefaktów."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Przypisywanie statusów defektom jest elementem zarządzania defektami, "
+                "a nie zarządzania konfiguracją."
+            )
+        }
+    },
+
+    {
+        "id": 9,
+        "text": (
+            "Wskaż kategorię narzędzi, które ułatwiają uporządkowanie przypadków testowych i wykrytych defektów "
+            "oraz zarządzanie konfiguracją."
+        ),
+        "options": {
+            "A": "Narzędzia do wykonywania testów i pomiaru pokrycia.",
+            "B": "Narzędzia do projektowania i implementacji testów.",
+            "C": "Narzędzia do zarządzania defektami.",
+            "D": "Narzędzia do zarządzania testowaniem."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Te narzędzia służą do uruchamiania testów i mierzenia pokrycia, "
+                "nie do zarządzania przypadkami testowymi, defektami i konfiguracją."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Narzędzia do projektowania testów wspierają generowanie przypadków, "
+                "ale nie organizację całego procesu testowego."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Narzędzia do zarządzania defektami służą właśnie do defektów, "
+                "a nie do pełnego zarządzania przypadkami testowymi i konfiguracją."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Narzędzia do zarządzania testowaniem wspierają organizację wymagań, "
+                "przypadków testowych, defektów i często integrują się z systemami kontroli wersji."
+            )
+        }
+    },
+
+    {
+        "id": 10,
+        "text": "Która z poniższych odpowiedzi NAJLEPIEJ opisuje korzyści związane z automatyzacją testowania?",
+        "options": {
+            "A": "Możliwość generowania przypadków testowych bez dostępu do podstawy testów.",
+            "B": "Uzyskanie większego pokrycia dzięki bardziej obiektywnej ocenie.",
+            "C": "Zwiększenie czasu wykonywania testów dzięki większej mocy obliczeniowej.",
+            "D": "Zapobieganie błędom ludzkim poprzez zwiększenie spójności i powtarzalności."
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Zarówno tester, jak i narzędzie, potrzebują podstawy testów "
+                "(np. wymagań), aby wygenerować przypadki testowe."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Automatyzacja może pomóc w obiektywnym pomiarze pokrycia, "
+                "ale sam pomiar nie zwiększa pokrycia."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Większa moc obliczeniowa zazwyczaj skraca czas wykonania testów, "
+                "a nie go wydłuża – zwiększenie czasu nie jest korzyścią."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Automatyzacja eliminuje wiele błędów ludzkich, bo testy są wykonywane "
+                "zawsze w taki sam, powtarzalny sposób, z tymi samymi danymi i sekwencją kroków."
+            )
+        }
+    },
+
+    {
+        "id": 11,
+        "text": "Który z poniższych elementów NIE może zostać sprawdzony za pomocą testowania statycznego?",
+        "options": {
+            "A": "Umowa.",
+            "B": "Plan testów.",
+            "C": "Zaszyfrowany kod.",
+            "D": "Karta opisu testu."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź: niepoprawna. Umowa jest dokumentem, więc można ją oceniać w przeglądach statycznych.",
+            "B": "Odpowiedź: niepoprawna. Plan testów to dokument – klasyczny artefakt do testowania statycznego.",
+            "C": (
+                "Odpowiedź: poprawna. Zaszyfrowany kod jest nieczytelny, więc nie da się go sensownie "
+                "analizować w testowaniu statycznym."
+            ),
+            "D": "Odpowiedź: niepoprawna. Karta opisu testu jest dokumentem i może być przeglądana statycznie."
+        }
+    },
+
+    {
+        "id": 12,
+        "text": (
+            "Które z poniższych stwierdzeń dotyczących korzyści wynikających z testowania statycznego jest POPRAWNE?"
+        ),
+        "options": {
+            "A": "W testowaniu statycznym można wykryć inne typy defektów niż w testowaniu dynamicznym.",
+            "B": "W testowaniu dynamicznym można wykryć wszystkie defekty, które da się wykryć w testowaniu statycznym, a także defekty innego typu.",
+            "C": "W testowaniu dynamicznym można wykryć niektóre defekty wykrywane w testowaniu statycznym, jednak nie wszystkie.",
+            "D": "W testowaniu statycznym można wykryć wszystkie defekty, które da się wykryć w testowaniu dynamicznym, a także defekty innego typu."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź: niepoprawna. Część defektów jest wykrywalna zarówno statycznie, jak i dynamicznie, "
+                "więc nie są to zupełnie inne zbiory."
+            ),
+            "B": (
+                "Odpowiedź: niepoprawna. Dynamiczne testy nie wykryją np. nieosiągalnego kodu czy błędów "
+                "w wymaganiach – to domena testowania statycznego."
+            ),
+            "C": (
+                "Odpowiedź: poprawna. Zbiory defektów wykrywanych w testowaniu statycznym i dynamicznym "
+                "częściowo się pokrywają, ale żaden nie zawiera drugiego w całości."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. Statyczne techniki nie wykryją np. problemów z wydajnością, wycieków "
+                "pamięci czy błędów konkurencyjnych, które ujawniają się dopiero w czasie wykonania."
+            )
+        }
+    },
+
+    {
+        "id": 13,
+        "text": (
+            "System sprzedaży biletów do kina oblicza typ zniżki na podstawie roku urodzenia klienta (RU) "
+            "oraz roku bieżącego (RB) w następujący sposób:\n\n"
+            "Niech D oznacza różnicę między RB i RU, czyli D = RB – RU.\n"
+            "Jeśli D < 0 wyświetl komunikat o błędzie „rok urodzenia nie może być wcześniejszy niż rok bieżący”.\n"
+            "Jeśli 0 ≤ D < 18 zastosuj zniżkę dla uczniów.\n"
+            "Jeśli 18 ≤ D < 65 nie stosuj zniżek.\n"
+            "Jeśli D ≥ 65 zastosuj zniżkę dla emerytów.\n\n"
+            "Zestaw testowy zawiera obecnie dwa przypadki testowe:\n"
+            "• RU = 1990, RB = 2020, oczekiwany rezultat: brak zniżki\n"
+            "• RU = 2030, RB = 2029, oczekiwany rezultat: wyświetlenie komunikatu o błędzie\n\n"
+            "Wskaż DWA zestawy danych testowych, które należy dodać w celu uzyskania pełnego pokrycia "
+            "poprawnych klas równoważności dla typu zniżki."
+        ),
+        "options": {
+            "A": "RU = 2001, RB = 2065",
+            "B": "RU = 1900, RB = 1965",
+            "C": "RU = 1965, RB = 1900",
+            "D": "RU = 2011, RB = 2029",
+            "E": "RU = 2000, RB = 2000"
+        },
+        # Uwaga: tutaj masz pytanie wielokrotnego wyboru – Twój kod musi to obsłużyć!
+        "correct_multiple": ["B", "E"],
+        "explanations": {
+            "A": (
+                "Odpowiedź: niepoprawna. D = 2065 − 2001 = 64 → 'brak zniżki', klasa już pokryta."
+            ),
+            "B": (
+                "Odpowiedź: poprawna. D = 1965 − 1900 = 65 → 'zniżka dla emerytów', klasa jeszcze niepokryta."
+            ),
+            "C": (
+                "Odpowiedź: niepoprawna. D = 1900 − 1965 = −65 → 'błąd roku', klasa już pokryta."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. D = 2029 − 2011 = 18 → 'brak zniżki', klasa już pokryta."
+            ),
+            "E": (
+                "Odpowiedź: poprawna. D = 2000 − 2000 = 0 → 'zniżka dla uczniów', klasa jeszcze niepokryta."
+            )
+        }
+    },
+
+    {
+        "id": 14,
+        "text": (
+            "Testujesz system kontroli temperatury przeznaczony dla chłodni ogrodniczej. "
+            "System otrzymuje jako dane wejściowe temperaturę wyrażoną w stopniach Celsjusza (°C).\n\n"
+            "Jeśli temperatura jest nie mniejsza niż 0°C i nie przekracza 2°C, system wyświetla komunikat "
+            "„temperatura OK”. W przypadku niższych temperatur wyświetla „zbyt niska temperatura”, "
+            "a w przypadku wyższych – „zbyt wysoka temperatura”.\n\n"
+            "Który z poniższych zestawów danych wejściowych pozwala uzyskać najwyższy poziom pokrycia "
+            "w dwupunktowej analizie wartości brzegowych?"
+        ),
+        "options": {
+            "A": "-1, 3",
+            "B": "0, 2",
+            "C": "-1, 0, 2, 3",
+            "D": "-2, 0, 2, 4"
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź: niepoprawna. Obejmuje tylko wartości poza zakresem 'OK', brakuje granic wewnętrznych 0 i 2."
+            ),
+            "B": (
+                "Odpowiedź: niepoprawna. Testuje tylko klasę 'temperatura OK', brak klas 'zbyt niska' i 'zbyt wysoka'."
+            ),
+            "C": (
+                "Odpowiedź: poprawna. Zestaw (-1, 0, 2, 3) obejmuje wszystkie istotne granice między klasami: "
+                "-1 ↔ 0 oraz 2 ↔ 3."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. -2 i 4 leżą wewnątrz skrajnych klas, a nie dokładnie na granicach między klasami."
+            )
+        }
+    },
+
+    {
+        "id": 15,
+        "text": (
+            "Zestaw testowy S dla programu P osiągnął stuprocentowe pokrycie instrukcji kodu.\n"
+            "Składa się z trzech przypadków testowych, z których każdy pozwala uzyskać 50% pokrycia instrukcji.\n\n"
+            "Które z poniższych stwierdzeń jest POPRAWNE?"
+        ),
+        "options": {
+            "A": "Wykonanie S spowoduje wywołanie wszystkich możliwych awarii w programie P.",
+            "B": "S pozwala osiągnąć stuprocentowe pokrycie gałęzi programu P.",
+            "C": "Każda wykonywalna instrukcja w programie P zawierająca defekt została uruchomiona co najmniej raz w trakcie wykonania S.",
+            "D": "Po usunięciu jednego przypadku testowego z zestawu S dwa pozostałe przypadki w dalszym ciągu pozwolą osiągnąć stuprocentowe pokrycie instrukcji."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź: niepoprawna. 100% statement coverage nie gwarantuje wywołania wszystkich awarii – "
+                "defekt może ujawniać się tylko dla określonych danych."
+            ),
+            "B": (
+                "Odpowiedź: niepoprawna. 100% pokrycia instrukcji nie implikuje 100% pokrycia gałęzi."
+            ),
+            "C": (
+                "Odpowiedź: poprawna. Z definicji 100% pokrycia instrukcji wynika, że każda wykonywalna "
+                "instrukcja (również ta z defektem) została uruchomiona co najmniej raz."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. Usunięcie jednego przypadku może spowodować, że pewne instrukcje "
+                "nie będą już wykonywane, więc pokrycie spadnie poniżej 100%."
+            )
+        }
+    },
+
+    {
+        "id": 16,
+        "text": (
+            "Analityk ryzyka obliczył poziom ryzyka pewnego zdarzenia jako 1 000 PLN, "
+            "przy prawdopodobieństwie jego wystąpienia równym 50%.\n"
+            "Jaki jest wpływ ryzyka (impact)?"
+        ),
+        "options": {
+            "A": "500 PLN",
+            "B": "2 000 PLN",
+            "C": "50 000 PLN",
+            "D": "200 PLN"
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź: niepoprawna. 500 PLN nie spełnia wzoru Poziom ryzyka = P × Wpływ dla podanych danych.",
+            "B": (
+                "Odpowiedź: poprawna. Poziom ryzyka = Prawdopodobieństwo × Wpływ, więc Wpływ = 1 000 / 0,5 = 2 000 PLN."
+            ),
+            "C": "Odpowiedź: niepoprawna. 50 000 PLN jest całkowicie niezgodne z podanymi liczbami.",
+            "D": "Odpowiedź: niepoprawna. 200 PLN również nie spełnia wzoru 1 000 = 0,5 × Wpływ."
+        }
+    },
+
+    {
+        "id": 17,
+        "text": (
+            "Które z poniższych pojęć odpowiada definicji:\n"
+            "„Zbiór warunków definiujących, kiedy można oficjalnie rozpocząć określone zadanie”?"
+        ),
+        "options": {
+            "A": "Kryteria wyjścia (exit criteria)",
+            "B": "Kryteria zawieszenia (suspension criteria)",
+            "C": "Kryteria wejścia (entry criteria)",
+            "D": "Kryteria wznowienia (resumption criteria)"
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź: niepoprawna. Kryteria wyjścia określają, kiedy można zakończyć zadanie, "
+                "a nie kiedy je rozpocząć."
+            ),
+            "B": (
+                "Odpowiedź: niepoprawna. Kryteria zawieszenia mówią, kiedy należy przerwać testy."
+            ),
+            "C": (
+                "Odpowiedź: poprawna. Kryteria wejścia to warunki, które muszą być spełnione, "
+                "aby można było oficjalnie rozpocząć dane zadanie (np. fazę testów)."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. Kryteria wznowienia mówią, kiedy wznowić testy po zawieszeniu, "
+                "a nie kiedy zacząć je po raz pierwszy."
+            )
+        }
+    },
+
+    {
+        "id": 18,
+        "text": (
+            "Które z poniższych zdarzeń najlepiej odzwierciedla pielęgnację (maintenance) systemu "
+            "zgodnie z definicją ISTQB 4.0?"
+        ),
+        "options": {
+            "A": "Programista implementuje nową funkcję, która będzie częścią następnego wydania aplikacji.",
+            "B": "Tester przygotowuje przypadki testowe do testów systemowych przed wydaniem produktu.",
+            "C": "Zespół modyfikuje działający już system produkcyjny, aby usunąć defekt zgłoszony po wdrożeniu.",
+            "D": "Architekt projektuje nowy moduł systemu, który zostanie wdrożony w przyszłej wersji."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": "Odpowiedź: niepoprawna. To rozwój nowej funkcji, nie pielęgnacja istniejącego systemu.",
+            "B": "Odpowiedź: niepoprawna. Przygotowanie testów przed wydaniem nie jest maintenance.",
+            "C": (
+                "Odpowiedź: poprawna. Pielęgnacja to modyfikowanie systemu po wydaniu, np. w celu usunięcia defektów."
+            ),
+            "D": "Odpowiedź: niepoprawna. Projektowanie nowego modułu dotyczy przyszłej wersji systemu."
+        }
+    },
+
+    {
+        "id": 19,
+        "text": (
+            "Zespół tworzy aplikację do obsługi płatności online. Podczas analizy ryzyka tester "
+            "identyfikuje ryzyka wpływające na jakość produktu, m.in.: możliwość błędnego przetwarzania "
+            "kwoty płatności przy dużej liczbie równoczesnych transakcji, potencjalne problemy z "
+            "szyfrowaniem danych klientów, ryzyko wystąpienia błędów podczas generowania potwierdzeń "
+            "płatności.\n\n"
+            "Które z poniższych stwierdzeń najlepiej opisuje ryzyko wpływające na jakość produktu?"
+        ),
+        "options": {
+            "A": "Ryzyko wynikające z opóźnień zespołu projektowego, które może spowodować przesunięcie terminu wydania.",
+            "B": "Ryzyko, że system w określonych sytuacjach nie będzie działał poprawnie lub nie spełni wymagań jakościowych.",
+            "C": "Ryzyko związane z kosztami projektu, które mogą wzrosnąć w przypadku konieczności dodania nowych funkcjonalności.",
+            "D": "Ryzyko dotyczące trudności komunikacyjnych między zespołem testowym a programistami."
+        },
+        "correct": "B",
+        "explanations": {
+            "A": "Odpowiedź: niepoprawna. To ryzyko projektowe (harmonogram), nie produktowe.",
+            "B": (
+                "Odpowiedź: poprawna. Ryzyko jakości produktu (product risk) oznacza ryzyko, że system będzie "
+                "działał niepoprawnie lub nie spełni wymagań jakościowych (funkcjonalnych lub niefunkcjonalnych)."
+            ),
+            "C": "Odpowiedź: niepoprawna. To ryzyko budżetowe projektu, nie jakości produktu.",
+            "D": "Odpowiedź: niepoprawna. Trudności komunikacyjne to również ryzyko projektu."
+        }
+    },
+
+    {
+        "id": 20,
+        "text": (
+            "Podczas planowania testów dla nowego systemu obsługi zgłoszeń serwisowych, kierownik testów "
+            "przygotowuje dokument zawierający listę wszystkich zaplanowanych czynności testowych, "
+            "planowane daty rozpoczęcia i zakończenia zadań, kamienie milowe oraz zależności między zadaniami.\n\n"
+            "Jaki termin najlepiej opisuje taki dokument?"
+        ),
+        "options": {
+            "A": "Kryteria wejścia",
+            "B": "Budżet testów",
+            "C": "Strategia testów",
+            "D": "Harmonogram testów"
+        },
+        "correct": "D",
+        "explanations": {
+            "A": "Odpowiedź: niepoprawna. Kryteria wejścia to warunki rozpoczęcia testów, nie plan działań w czasie.",
+            "B": "Odpowiedź: niepoprawna. Budżet testów dotyczy kosztów, nie harmonogramu.",
+            "C": "Odpowiedź: niepoprawna. Strategia testów opisuje podejście i zakres, nie szczegółowy terminarz.",
+            "D": (
+                "Odpowiedź: poprawna. Harmonogram testów to właśnie plan działań z datami, kamieniami milowymi "
+                "i zależnościami między zadaniami."
+            )
+        }
+    },
+
+    {
+        "id": 21,
+        "text": (
+            "Zespół analizuje dokument wymagań dla nowego systemu rezerwacji wizyt lekarskich.\n"
+            "Tester przygotowuje zestaw realnych scenariuszy użytkownika, a następnie sprawdza, czy wymagania "
+            "pozwalają zrealizować każdy scenariusz od początku do końca, bez braków i sprzeczności.\n\n"
+            "Jaka technika przeglądu została zastosowana?"
+        ),
+        "options": {
+            "A": "Przegląd oparty na scenariuszach",
+            "B": "Inspekcja formalna",
+            "C": "Przegląd techniczny",
+            "D": "Przegląd oparty na liście kontrolnej"
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź: poprawna. Przegląd oparty na scenariuszach polega na weryfikacji, czy produkt pracy "
+                "(np. wymagania) umożliwia realizację konkretnych scenariuszy użytkownika od początku do końca."
+            ),
+            "B": (
+                "Odpowiedź: niepoprawna. Inspekcja formalna to sformalizowany proces przeglądu z rolami i protokołem, "
+                "niekoniecznie oparty na scenariuszach."
+            ),
+            "C": (
+                "Odpowiedź: niepoprawna. Przegląd techniczny skupia się na aspektach technicznych, nie na scenariuszach biznesowych."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. Przegląd oparty na liście kontrolnej używa checklist, a w pytaniu mowa o scenariuszach."
+            )
+        }
+    },
+
+    {
+        "id": 22,
+        "text": (
+            "Twój zespół ma przetestować poprawność drukowania raportu z systemu finansowo-księgowego "
+            "na różnych modelach drukarek (36 modeli różnych marek).\n"
+            "Z powodu ograniczonego czasu nie da się przetestować wszystkich drukarek.\n\n"
+            "Które podejście do podziału na klasy równoważności jest NAJBARDZIEJ sensowne "
+            "z punktu widzenia testowania poprawności wydruku raportów?"
+        ),
+        "options": {
+            "A": "Podzielenie drukarek według marki i wybranie po jednej drukarce z każdej marki.",
+            "B": "Wybranie trzech najczęściej używanych drukarek przez użytkowników i przetestowanie tylko ich.",
+            "C": "Podzielenie drukarek według technologii drukowania (laser mono, laser kolor, atramentowe, urządzenia wielofunkcyjne) i wybranie po jednej drukarce z każdej klasy.",
+            "D": "Przetestowanie tylko jednej, najnowszej drukarki, zakładając, że jeśli ona działa, to starsze też będą działać."
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź: niepoprawna. W obrębie jednej marki mogą być różne technologie druku, które "
+                "zachowują się inaczej z punktu widzenia formatowania raportu."
+            ),
+            "B": (
+                "Odpowiedź: niepoprawna. Popularność nie jest kryterium klasy równoważności – trzy popularne "
+                "drukarki mogą być np. tylko laser mono."
+            ),
+            "C": (
+                "Odpowiedź: poprawna. Technologia druku (laser, atrament, kolor/mono, MFP) ma realny wpływ na "
+                "to, jak drukowany jest raport, więc taki podział dobrze odzwierciedla różnice istotne dla testów."
+            ),
+            "D": (
+                "Odpowiedź: niepoprawna. Jedna drukarka nie reprezentuje całej populacji 36 modeli – "
+                "to nie jest sensowny podział na klasy równoważności."
+            )
+        }
+    },
+    # ===== PYTANIE 23 – DevOps a testowanie (ISTQB 4.0) =====
+    {
+        "id": 23,
+        "text": (
+            "Organizacja wdraża metodykę DevOps w celu skrócenia czasu dostarczania oprogramowania i zwiększenia jego jakości.\n"
+            "Zespół zauważa następujące efekty:\n\n"
+            "• programiści częściej wykonują testy modułowe i stosują analizę statyczną,\n"
+            "• testy regresji są w dużej mierze zautomatyzowane i wykonywane w potoku CI/CD,\n"
+            "• jakość kodu jest weryfikowana natychmiast po wprowadzeniu zmian,\n"
+            "• środowiska testowe można szybko odtwarzać i utrzymywać dzięki automatyzacji,\n"
+            "• zespół testowy otrzymuje szybkie informacje zwrotne o wpływie zmian na istniejący kod.\n\n"
+            "Które z poniższych stwierdzeń najlepiej opisuje korzyść DevOps dla testowania, zgodnie z ISTQB 4.0?"
+        ),
+        "options": {
+            "A": "DevOps eliminuje potrzebę wykonywania testów manualnych i skupia się wyłącznie na testach automatycznych.",
+            "B": "DevOps poprawia komunikację między zespołem developerskim a testerskim, umożliwiając szybsze i częstsze uzyskiwanie informacji zwrotnej o jakości kodu.",
+            "C": "DevOps sprawia, że testowanie regresji staje się niepotrzebne dzięki częstemu wdrażaniu małych zmian.",
+            "D": "DevOps zastępuje testowanie operacyjne, ponieważ środowiska produkcyjne są utrzymywane automatycznie.",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. DevOps nie eliminuje testów manualnych. "
+                "Automatyzacja ogranicza ich zakres, ale testy manualne (np. akceptacyjne, "
+                "eksploracyjne, użyteczności) nadal są potrzebne."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Zgodnie z ISTQB 4.0, DevOps poprawia przepływ informacji "
+                "pomiędzy developmentem, testowaniem i operacjami, zapewnia szybszą informację zwrotną "
+                "o jakości kodu, wykorzystuje CI/CD oraz automatyzację środowisk. "
+                "Opis w scenariuszu (częste testy modułowe, analiza statyczna, automatyczna regresja, "
+                "szybka informacja o wpływie zmian) dokładnie odpowiada tej korzyści – lepszej komunikacji "
+                "i szybszemu feedbackowi o jakości."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. DevOps nie eliminuje testów regresji – wręcz przeciwnie, "
+                "wspiera ich automatyzację i częste wykonywanie w potoku CI/CD."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. DevOps nie zastępuje testowania operacyjnego. "
+                "Testy operacyjne (np. procedury start/stop, backupy, monitorowanie) nadal są potrzebne, "
+                "nawet jeśli środowiska są silnie zautomatyzowane."
+            ),
+        },
+    },
+    # ===== PYTANIE 24 – Pomyłka (error) w ISTQB 4.0 =====
+    {
+        "id": 24,
+        "text": (
+            "Podczas analizy defektu w systemie płatności okazało się, że programista błędnie przepisał jeden z warunków biznesowych "
+            "do kodu (użył znaku \">\" zamiast \"≥\"), co spowodowało powstanie defektu. Błąd ten został odnaleziony dopiero podczas testów integracyjnych.\n\n"
+            "Które z poniższych stwierdzeń najlepiej opisuje pomyłkę (error) zgodnie z ISTQB 4.0?"
+        ),
+        "options": {
+            "A": "Działanie człowieka, które skutkuje defektem.",
+            "B": "Niezgodność działania systemu z jego wymaganiami.",
+            "C": "Niepoprawne działanie systemu podczas jego wykonania.",
+            "D": "Defekt, który został wykryty i naprawiony w trakcie testowania.",
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. ISTQB definiuje pomyłkę (error) jako czynność lub decyzję człowieka, "
+                "która prowadzi do powstania defektu w oprogramowaniu lub innym artefakcie. "
+                "W scenariuszu programista błędnie zaimplementował warunek biznesowy (\"\">\" zamiast \"≥\"), "
+                "co doprowadziło do powstania defektu – jest to klasyczny przykład pomyłki."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Niezgodność działania systemu z wymaganiami to definicja defektu (lub "
+                "w pewnych kontekstach awarii), a nie pomyłki człowieka."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Niepoprawne działanie systemu podczas wykonania to awaria (failure), "
+                "czyli efekt uruchomienia defektu, a nie sama pomyłka."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Jest to opis defektu, który został wykryty i naprawiony, "
+                "ale wciąż mówimy o defekcie, nie o pierwotnej pomyłce człowieka, która ten defekt spowodowała."
+            ),
+        },
+    },
+    # ===== PYTANIE 25 – Analiza wartości brzegowych (zamawianie pizzy) =====
+    {
+        "id": 25,
+        "text": (
+            "Włoska restauracja „Bella Italia” umożliwia klientom zamawianie pizzy online.\n"
+            "Podczas składania zamówienia użytkownik musi wybrać liczbę dodatkowych składników do pizzy.\n\n"
+            "System stosuje następujące zasady:\n\n"
+            "• Minimalna liczba dodatkowych składników: 0 (brak dodatków).\n"
+            "• Maksymalna liczba dodatkowych składników: 8.\n\n"
+            "Jeśli użytkownik wybierze liczbę mniejszą niż 0 lub większą niż 8, system natychmiast wyświetla komunikat:\n"
+            "„Nieprawidłowa liczba dodatków – wybierz wartość z zakresu 0–8.”\n\n"
+            "Liczbę dodatków można podawać wyłącznie jako liczbę całkowitą.\n\n"
+            "Jako tester przygotowujesz zestaw testów opartych na analizie wartości brzegowych, aby sprawdzić reakcję systemu na dane niepoprawne.\n\n"
+            "Która z poniższych wartości stanowi najbardziej odpowiednią niepoprawną wartość brzegową, która powinna wywołać komunikat błędu?"
+        ),
+        "options": {
+            "A": "0",
+            "B": "1",
+            "C": "9",
+            "D": "8",
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. 0 jest minimalną poprawną wartością z dozwolonego zakresu 0–8 "
+                "i nie powinna wywołać komunikatu błędu."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. 1 leży wewnątrz poprawnego zakresu 0–8, więc nie jest wartością brzegową "
+                "po stronie niepoprawnej."
+            ),
+            "C": (
+                "Odpowiedź poprawna. Zakres poprawnych wartości to 0–8. W analizie wartości brzegowych po stronie "
+                "niepoprawnej testujemy wartości tuż poza zakresem, czyli m.in. maksymalną niepoprawną wartość 9. "
+                "Wartość 9 leży tuż za górną granicą zakresu i powinna wywołać komunikat błędu."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. 8 jest maksymalną poprawną wartością, czyli brzegiem po stronie poprawnej, "
+                "a nie po stronie niepoprawnej – nie powinna powodować błędu."
+            ),
+        },
+    },
+    # ===== PYTANIE 26 – Tabela decyzyjna – promocja pizza + napój =====
+    {
+        "id": 26,
+        "text": (
+            "W restauracji „Bella Italia” obowiązuje promocja „Zestaw Premium”:\n\n"
+            "Zasady promocji:\n\n"
+            "• Promocja dotyczy tylko pizzy w rozmiarze dużym (L).\n"
+            "• Do zestawu musi być dodany napój (dowolny z dostępnych).\n"
+            "• Jeżeli pizza jest mięsna (zawiera przynajmniej jeden składnik mięsny: szynka, salami, boczek, kurczak, "
+            "  wołowina, tuńczyk, szynka parmeńska, pepperoni), a napój to lemonada, klient otrzymuje 15% rabatu na cały zestaw.\n"
+            "• Jeśli warunki z pkt 3 nie są spełnione, ale klient zamawia dużą pizzę (L) + dowolny napój, otrzymuje 10% rabatu.\n"
+            "• W przypadku pizzy w rozmiarze S lub M promocja nie obowiązuje.\n\n"
+            "Tester przygotowuje testy z użyciem tabeli decyzyjnej, aby pokryć wszystkie możliwe wyniki akcji:\n\n"
+            "A1: brak rabatu\n"
+            "A2: rabat 10%\n"
+            "A3: rabat 15%\n\n"
+            "Który z poniższych zestawów przypadków testowych najlepiej pokrywa wszystkie możliwe wyniki decyzji (A1, A2, A3)?\n\n"
+            "Załóżmy, że:\n"
+            "„Margherita” = pizza bez mięsa,\n"
+            "„Pepperoni” = pizza mięsna,\n"
+            "napój wskazujemy wprost (np. „lemonada”, „cola”)."
+        ),
+        "options": {
+            "A": (
+                "Margherita S + cola → A1\n"
+                "Margherita L + woda → A2\n"
+                "Pepperoni L + lemonada → A3"
+            ),
+            "B": (
+                "Margherita M + cola → A1\n"
+                "Pepperoni L + cola → A2"
+            ),
+            "C": (
+                "Pepperoni L + lemonada → A3\n"
+                "Margherita L + sok → A2"
+            ),
+            "D": (
+                "Margherita S + woda → A1\n"
+                "Pepperoni M + lemonada → A1\n"
+                "Pepperoni L + cola → A2"
+            ),
+        },
+        "correct": "A",
+        "explanations": {
+            "A": (
+                "Odpowiedź poprawna. Tabela decyzyjna powinna pokryć wszystkie możliwe akcje systemu: "
+                "A1 (brak rabatu), A2 (rabat 10%) i A3 (rabat 15%).\n\n"
+                "• Margherita S + cola → rozmiar S, więc promocja nie obowiązuje → A1 (brak rabatu).\n"
+                "• Margherita L + woda → pizza duża (L) + napój, ale pizza bez mięsa i napój ≠ lemonada, więc spełniony "
+                "jest warunek „L + napój”, lecz nie warunek 15% → A2 (rabat 10%).\n"
+                "• Pepperoni L + lemonada → pizza duża (L), pizza mięsna, napój = lemonada → spełnione warunki z pkt 3 "
+                "→ A3 (rabat 15%).\n\n"
+                "Zestaw A zawiera co najmniej jeden przypadek dla każdej akcji A1, A2 i A3, więc zapewnia pełne pokrycie "
+                "decyzji w tabeli decyzyjnej."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Zawiera tylko:\n"
+                "• A1 – brak rabatu (Margherita M + cola),\n"
+                "• A2 – rabat 10% (Pepperoni L + cola).\n"
+                "Brakuje przypadku dla A3 (15% rabatu), więc nie ma pełnego pokrycia wszystkich możliwych akcji."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Zawiera tylko:\n"
+                "• A3 – rabat 15% (Pepperoni L + lemonada),\n"
+                "• A2 – rabat 10% (Margherita L + sok).\n"
+                "Brakuje przypadku dla A1 (brak rabatu), więc tabela decyzyjna nie jest w pełni pokryta."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testy dają wyniki:\n"
+                "• Margherita S + woda → A1 (brak rabatu),\n"
+                "• Pepperoni M + lemonada → A1 (brak rabatu, bo rozmiar M),\n"
+                "• Pepperoni L + cola → A2 (rabat 10%).\n"
+                "Brakuje przypadku dla A3 (rabat 15%), więc nie uzyskujemy pełnego pokrycia wszystkich akcji."
+            ),
+        },
+    },
+    # ===== PYTANIE 27 – Które zdarzenie oznacza ukończenie testów? (ISTQB 4.0) =====
+    {
+        "id": 27,
+        "text": (
+            "Zespół testowy pracuje nad testowaniem nowej funkcjonalności w aplikacji bankowej umożliwiającej realizację "
+            "przelewów natychmiastowych. W trakcie prac zastosowano kryteria wejścia i wyjścia zdefiniowane w planie testów.\n\n"
+            "Poniżej przedstawiono cztery zdarzenia, które wystąpiły pod koniec iteracji:\n\n"
+            "1️⃣ Ostatni defekt o wysokim priorytecie został poprawiony i ponownie przetestowany.\n"
+            "2️⃣ Wszystkie zaplanowane przypadki testowe zostały wykonane — część zakończyła się powodzeniem, kilka "
+            "    niepowodzeniem, ale ich defekty sklasyfikowano jako niskiego priorytetu.\n"
+            "3️⃣ Zespół programistów stwierdził, że funkcjonalność działa i można przejść do wdrożenia produkcyjnego.\n"
+            "4️⃣ Zespół testowy potwierdził, że wszystkie kryteria wyjścia opisane w planie testów zostały spełnione, w tym:\n"
+            "    • zakończono wykonanie przypadków testowych,\n"
+            "    • wszystkie defekty wysokiego i średniego priorytetu są naprawione,\n"
+            "    • ryzyka testowe zostały zaakceptowane przez właściciela produktu,\n"
+            "    • przygotowano raport końcowy z testów.\n\n"
+            "Które z poniższych zdarzeń najlepiej opisuje formalnie ukończone testy zgodnie z ISTQB 4.0?"
+        ),
+        "options": {
+            "A": "Zdarzenie 1",
+            "B": "Zdarzenie 2",
+            "C": "Zdarzenie 3",
+            "D": "Zdarzenie 4",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Poprawienie ostatniego defektu o wysokim priorytecie jest ważne, "
+                "ale samo w sobie nie oznacza zakończenia testów. Mogą wciąż istnieć inne obowiązki wynikające "
+                "z kryteriów wyjścia (np. raport końcowy, akceptacja ryzyk, inne otwarte defekty niższego priorytetu)."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Wykonanie wszystkich zaplanowanych przypadków testowych to tylko jeden z elementów "
+                "procesu testowego. Zgodnie z ISTQB 4.0, potrzebna jest także formalna ocena spełnienia kryteriów wyjścia, "
+                "a nie tylko odhaczenie przypadków testowych."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Opinie zespołu programistycznego są ważne, ale to nie one formalnie definiują "
+                "zakończenie testów. Decyzja o zakończeniu powinna opierać się na obiektywnym sprawdzeniu kryteriów "
+                "wyjścia, zwykle przez zespół testowy wraz z interesariuszami."
+            ),
+            "D": (
+                "Odpowiedź poprawna. ISTQB 4.0 wskazuje, że testy można uznać za zakończone dopiero wtedy, gdy "
+                "spełnione zostały wcześniej ustalone kryteria wyjścia. Zdarzenie 4 opisuje dokładnie taką sytuację: "
+                "formalną weryfikację kryteriów wyjścia przez zespół testowy, naprawienie defektów o wysokim i średnim "
+                "priorytecie, akceptację ryzyk oraz przygotowanie raportu końcowego. To odpowiada definicji formalnego "
+                "zakończenia testów."
+            ),
+        },
+    },
+    # ===== PYTANIE 28 – Testowanie niefunkcjonalne: użyteczność =====
+    {
+        "id": 28,
+        "text": (
+            "Podczas testowania aplikacji mobilnej do zamawiania taksówek tester ocenia następujące elementy:\n\n"
+            "• czy użytkownik potrafi łatwo odnaleźć przycisk „Wezwij taxi”,\n"
+            "• czy wielkość przycisków oraz odstępy między nimi są odpowiednie na urządzeniach mobilnych,\n"
+            "• czy wyświetlane komunikaty o błędach są jasne i zrozumiałe,\n"
+            "• czy cały proces zamówienia przebiega intuitacyjnie i nie wymaga dodatkowych wyjaśnień.\n\n"
+            "Jakie rodzaje testów są wykonywane przez testera?"
+        ),
+        "options": {
+            "A": "Testy zgodności (compliance testing)",
+            "B": "Testy funkcjonalne (functional testing)",
+            "C": "Testy niezawodności (reliability testing)",
+            "D": "Testy użyteczności (usability testing)",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Testy zgodności dotyczą weryfikacji zgodności z normami, regulacjami lub "
+                "politykami organizacji. W pytaniu nie ma żadnych odniesień do standardów (np. RODO, WCAG), "
+                "badana jest wyłącznie wygoda użytkownika."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Testy funkcjonalne sprawdzają, czy funkcje działają zgodnie z wymaganiami. "
+                "W scenariuszu nie jest oceniane działanie funkcji, ale łatwość ich znalezienia, intuicyjność procesu "
+                "i zrozumiałość komunikatów — czyli aspekty UX, nie funkcjonalności."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Testy niezawodności badają stabilność, odporność na awarie, czas działania "
+                "bez błędów oraz zdolność do odzyskiwania po błędach. Tutaj nie testuje się żadnego z tych aspektów."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Tester ocenia kwestie związane z intuicyjnością, ergonomią, czytelnością, "
+                "łatwością obsługi oraz ogólnym doświadczeniem użytkownika. To dokładnie zakres testów użyteczności "
+                "(usability), które analizują, czy użytkownik może korzystać z aplikacji łatwo, szybko i bez "
+                "dodatkowych wyjaśnień."
+            ),
+        },
+    },
+    # ===== PYTANIE 29 – Testowanie gałęzi i pokrycie gałęzi (branch coverage) =====
+    {
+        "id": 29,
+        "text": (
+            "Rozważ poniższy fragment pseudokodu modułu odpowiedzialnego za naliczanie rabatu:\n\n"
+            "1.  IF (klientVIP = true) THEN\n"
+            "2.        rabat = 20\n"
+            "3.  ELSE\n"
+            "4.        IF (wartoscZakupu > 200) THEN\n"
+            "5.               rabat = 10\n"
+            "6.        ELSE\n"
+            "7.               rabat = 0\n"
+            "8.        ENDIF\n"
+            "9.  ENDIF\n"
+            "10. Zwróć rabat\n\n"
+            "W powyższym kodzie występują trzy gałęzie warunkowe:\n\n"
+            "• IF klientVIP = true → gałąź „prawda”\n"
+            "• IF klientVIP = false oraz wartoscZakupu > 200 → gałąź „prawda”\n"
+            "• IF klientVIP = false oraz wartoscZakupu ≤ 200 → gałąź „fałsz”\n\n"
+            "Zespół testerów przygotował dwa przypadki testowe:\n\n"
+            "1️⃣ Test A: klientVIP = true\n"
+            "2️⃣ Test B: klientVIP = false, wartoscZakupu = 300\n\n"
+            "Pytanie:\n"
+            "Jakie pokrycie gałęzi uzyska zestaw testów A + B?"
+        ),
+        "options": {
+            "A": "33% — tylko jedna gałąź została sprawdzona",
+            "B": "66% — dwie z trzech gałęzi zostały sprawdzone",
+            "C": "100% — wszystkie gałęzie zostały sprawdzone",
+            "D": "50% — pokryto połowę gałęzi, bo jedna decyzja została pominięta",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Testy pokrywają dwie gałęzie (VIP oraz zakup > 200), "
+                "więc pokrycie jest większe niż 33%."
+            ),
+            "B": (
+                "Odpowiedź poprawna. W kodzie występują trzy gałęzie:\n"
+                "1) klientVIP = true,\n"
+                "2) klientVIP = false AND wartoscZakupu > 200,\n"
+                "3) klientVIP = false AND wartoscZakupu ≤ 200.\n\n"
+                "Testy pokrywają:\n"
+                "• Test A → gałąź 1,\n"
+                "• Test B → gałąź 2.\n\n"
+                "Brakuje gałęzi 3 (wartoscZakupu ≤ 200). Pokrycie = 2/3 = 66%."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Nie została pokryta gałąź, w której wartoscZakupu ≤ 200."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. ISTQB definiuje pokrycie gałęzi jako liczbę wykonanych gałęzi "
+                "podzieloną przez liczbę wszystkich gałęzi. To nie jest połowa decyzji, tylko 2 z 3 gałęzi."
+            ),
+        },
+    },
+    # ===== PYTANIE 30 – Pokrycie instrukcji = 100% =====
+    {
+        "id": 30,
+        "text": (
+            "Rozważ poniższy fragment pseudokodu:\n\n"
+            "1.  odczytajWiek()\n"
+            "2.  IF (wiek < 0) THEN\n"
+            "3.        wyswietl(\"Błędny wiek\")\n"
+            "4.  ELSE\n"
+            "5.        IF (wiek < 18) THEN\n"
+            "6.              wyswietl(\"Brak pełnoletności\")\n"
+            "7.        ELSE\n"
+            "8.              wyswietl(\"Pełnoletni klient\")\n"
+            "9.        ENDIF\n"
+            "10. ENDIF\n"
+            "11. zakoncz()\n\n"
+            "Zespół przygotował następujące trzy przypadki testowe:\n\n"
+            "Test A: wiek = -5\n"
+            "Test B: wiek = 15\n"
+            "Test C: wiek = 25\n\n"
+            "Pytanie: Jakie pokrycie instrukcji (statement coverage) uzyskuje zestaw testów A + B + C?"
+        ),
+        "options": {
+            "A": "55%",
+            "B": "73%",
+            "C": "90%",
+            "D": "100%",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Pokrycie jest wyższe niż 55%, ponieważ każdy z trzech testów "
+                "uruchamia znaczną część kodu, a razem pokrywają wszystkie linie."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. 73% nie odpowiada stosunkowi wykonanych instrukcji do wszystkich instrukcji "
+                "w podanym pseudokodzie."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. 90% sugerowałoby, że część instrukcji nie została wykonana ani razu, "
+                "ale w tym zestawie testów każda instrukcja zostaje uruchomiona."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Pokrycie instrukcji (statement coverage) to:\n"
+                "(liczba wykonanych instrukcji / liczba wszystkich instrukcji) × 100%.\n\n"
+                "W kodzie mamy 11 instrukcji:\n"
+                "1) odczytajWiek()\n"
+                "2) IF (wiek < 0)\n"
+                "3) wyswietl(\"Błędny wiek\")\n"
+                "4) ELSE\n"
+                "5) IF (wiek < 18)\n"
+                "6) wyswietl(\"Brak pełnoletności\")\n"
+                "7) ELSE\n"
+                "8) wyswietl(\"Pełnoletni klient\")\n"
+                "9) ENDIF\n"
+                "10) ENDIF\n"
+                "11) zakoncz()\n\n"
+                "Pokrycie przez poszczególne testy:\n"
+                "• Test A (wiek = -5) przechodzi przez IF (wiek < 0) jako prawda i wykonuje linie: 1,2,3,9,10,11.\n"
+                "• Test B (wiek = 15) przechodzi przez gałąź „wiek < 0 = fałsz”, następnie „wiek < 18 = prawda” i "
+                "wykonuje linie: 1,2,4,5,6,9,10,11.\n"
+                "• Test C (wiek = 25) przechodzi przez gałąź „wiek < 0 = fałsz”, „wiek < 18 = fałsz” i wykonuje linie: "
+                "1,2,4,5,7,8,9,10,11.\n\n"
+                "Łącznie, biorąc pod uwagę wszystkie trzy testy, każda z instrukcji 1–11 została wykonana co najmniej raz. "
+                "Zatem pokrycie instrukcji wynosi 11/11 × 100% = 100%."
+            ),
+        },
+    },
+    # ===== PYTANIE 31 – Korzyści testowania eksploracyjnego =====
+    {
+        "id": 31,
+        "text": (
+            "Zespół testerów wykonuje testy eksploracyjne nowej aplikacji do zarządzania projektami.\n"
+            "W trakcie sesji testerzy:\n\n"
+            "• szybko odkrywają nieoczekiwane defekty,\n"
+            "• dostosowują testy do bieżących obserwacji,\n"
+            "• wykorzystują swoją wiedzę o podobnych systemach,\n"
+            "• tworzą nowe scenariusze na podstawie wcześniej odkrytych błędów.\n\n"
+            "Które z poniższych NIE jest korzyścią testowania eksploracyjnego?"
+        ),
+        "options": {
+            "A": "Możliwość szybkiego dostosowania testów do wyników ich wykonywania",
+            "B": "Skuteczne wykrywanie nietypowych, nieprzewidywalnych defektów",
+            "C": "Lepsze wykorzystanie doświadczenia testerów i ich kreatywności",
+            "D": "Zapewnienie pełnej powtarzalności testów dzięki precyzyjnym, szczegółowym skryptom testowym",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna jako wybór. Jest to rzeczywista korzyść testowania eksploracyjnego. "
+                "Ta technika pozwala dynamicznie dostosowywać testy do uzyskanych wyników, nowych obserwacji "
+                "i odkrytych zachowań systemu."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna jako wybór. Testowanie eksploracyjne świetnie sprawdza się w wykrywaniu "
+                "nietypowych, trudnych do przewidzenia defektów, które często nie są pokryte klasycznymi, "
+                "z góry zaplanowanymi przypadkami testowymi."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna jako wybór. Jedną z głównych zalet testów eksploracyjnych jest to, że "
+                "maksymalnie wykorzystują doświadczenie, wiedzę domenową i kreatywność testerów – to oni "
+                "na bieżąco decydują, gdzie „wejść głębiej” i co dalej sprawdzić."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Testowanie eksploracyjne z natury nie opiera się na szczegółowych, "
+                "predefiniowanych skryptach testowych i nie zapewnia pełnej powtarzalności wszystkich kroków. "
+                "Jest techniką adaptacyjną, elastyczną i kreatywną – scenariusze powstają w trakcie badania systemu. "
+                "Pełna, skryptowa powtarzalność jest typowa raczej dla testów w pełni zautomatyzowanych lub "
+                "ściśle skryptowych, a nie dla testów eksploracyjnych."
+            ),
+        },
+    },
+    # ===== PYTANIE 32 – Konflikt w dużym projekcie (projekt o dużej skali) =====
+    {
+        "id": 32,
+        "text": (
+            "Twój zespół uczestniczy w dużym projekcie budowy systemu do obsługi płatności międzynarodowych. "
+            "Projekt trwa już wiele miesięcy, ma kilkanaście zespołów w różnych krajach, a integracja modułów "
+            "jest bardzo skomplikowana.\n\n"
+            "W trakcie prac integracyjnych pojawia się sytuacja:\n\n"
+            "• Zespół programistów odpowiedzialny za moduł autoryzacji transakcji twierdzi, że ich komponent działa "
+            "  poprawnie i wszystkie testy modułowe przeszły.\n"
+            "• Zespół testowy zgłasza powtarzające się awarie systemu podczas integracji modułu autoryzacji z modułem księgowania.\n"
+            "• Programiści obwiniają zespół testerów o „złe środowisko testowe” i odmawiają naprawy defektu.\n"
+            "• Testerzy uważają, że programiści unikają odpowiedzialności i ignorują krytyczne problemy, mimo że awarie "
+            "  są powtarzalne i blokują dalsze testy.\n"
+            "• Na spotkaniach statusowych atmosfera staje się napięta, zespoły przerzucają się winą, a integracja projektu ulega opóźnieniu.\n\n"
+            "Która z poniższych sytuacji NAJLEPIEJ opisuje konflikt, który powstał podczas trwania dużego projektu?"
+        ),
+        "options": {
+            "A": "Testerzy potrzebują dodatkowych danych testowych, a zespół analityków jeszcze ich nie przygotował.",
+            "B": (
+                "Zespół testowy i programistyczny mają sprzeczne opinie co do odpowiedzialności za defekt i nie są w stanie "
+                "osiągnąć porozumienia, co powoduje opóźnienia i wzrost napięcia w projekcie."
+            ),
+            "C": "Serwer testowy uległ awarii i testy zostały tymczasowo wstrzymane.",
+            "D": "Programiści zakończyli pracę nad sprintem wcześniej niż testerzy i czekają na wyniki testów.",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. To sytuacja logistyczna (brak danych testowych), ale nie konflikt – "
+                "nie ma tu sporu, przerzucania winy ani napięć między zespołami."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Opisana sytuacja zawiera wszystkie typowe cechy konfliktu w dużym projekcie: "
+                "sprzeczne opinie co do odpowiedzialności za defekt, przerzucanie winy między zespołami, "
+                "odmowę współpracy, pogorszenie atmosfery oraz realny wpływ na harmonogram (opóźnienia w integracji). "
+                "To klasyczny konflikt interpersonalno-organizacyjny między zespołem testowym a programistycznym."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Awaria serwera testowego to problem techniczny, a nie konflikt. "
+                "Nie ma tu różnicy zdań ani napięcia między ludźmi – po prostu zasób techniczny przestał działać."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. To typowa sytuacja w projektach zwinnych – programiści kończą implementację, "
+                "a testerzy wciąż pracują nad testami. Brakuje elementów konfliktu, takich jak spór, wzajemne oskarżenia "
+                "czy pogorszenie współpracy."
+            ),
+        },
+    },
+    # ===== PYTANIE 33 – Model kaskadowy w dużym projekcie =====
+    {
+        "id": 33,
+        "text": (
+            "Duża organizacja rządowa realizuje wieloletni projekt stworzenia systemu do obsługi rejestrów "
+            "obywatelskich. Ze względu na skalę projektu oraz wymagania prawne, proces wytwarzania oprogramowania obejmuje:\n\n"
+            "• pełną i szczegółową specyfikację wymagań przed rozpoczęciem projektu,\n"
+            "• brak możliwości częstych zmian wymagań,\n"
+            "• sekwencyjny przebieg prac: analiza → projekt → implementacja → testowanie → wdrożenie,\n"
+            "• rozpoczęcie testów dopiero po zakończeniu implementacji,\n"
+            "• dużą liczbę dokumentów formalnych na każdym etapie,\n"
+            "• długie cykle przekazywania produktów pracy między działami (analitycy → projektanci → programiści → testerzy).\n\n"
+            "Który model wytwarzania oprogramowania NAJLEPIEJ odpowiada opisanej sytuacji?"
+        ),
+        "options": {
+            "A": "Model przyrostowy",
+            "B": "Model V",
+            "C": "Model Agile (Scrum)",
+            "D": "Model kaskadowy (Waterfall)",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Model przyrostowy zakłada powstawanie systemu w małych fragmentach "
+                "oraz możliwość wprowadzania zmian między przyrostami. W opisie nie występuje iteracyjność "
+                "ani elastyczność — prace przebiegają liniowo."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Model V łączy etapy analizy i projektu z planowaniem odpowiednich "
+                "testów, a testowanie odbywa się równolegle z projektowaniem. W scenariuszu testy zaczynają się "
+                "dopiero po zakończeniu implementacji, co nie pasuje do modelu V."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Agile (Scrum) zakłada krótkie iteracje, częste zmiany wymagań i ciągłe "
+                "sprzężenie zwrotne z klientem. W przedstawionej sytuacji wymagania są zamrożone, a prace mają "
+                "charakter sztywno sekwencyjny."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Opis idealnie odpowiada modelowi kaskadowemu (Waterfall): pełna specyfikacja "
+                "wymagań na początku, brak możliwości zmian, sekwencyjność etapów, rozpoczęcie testowania dopiero "
+                "po implementacji oraz wysoka formalizacja dokumentacji. To klasyczna charakterystyka Waterfall."
+            ),
+        },
+    },
+    # ===== PYTANIE 34 – Czym jest testowanie oprogramowania? =====
+    {
+        "id": 34,
+        "text": (
+            "Na podstawie poniższego opisu:\n\n"
+            "Testowanie oprogramowania to zbiór czynności mających na celu wykrycie defektów "
+            "oraz ocenę jakości produktów pracy związanych z oprogramowaniem. "
+            "Testowanie obejmuje zarówno weryfikację, jak i walidację, "
+            "może mieć charakter dynamiczny lub statyczny, "
+            "i nie polega wyłącznie na wykonywaniu testów, lecz wymaga również "
+            "planowania, zarządzania, monitorowania i analizy.\n\n"
+            "Które z poniższych stwierdzeń NAJLEPIEJ opisuje, czym jest testowanie zgodnie z powyższą definicją?"
+        ),
+        "options": {
+            "A": "Testowanie to uruchamianie oprogramowania w celu potwierdzenia, że działa zgodnie z wymaganiami.",
+            "B": "Testowanie to wyłącznie znajdowanie błędów w kodzie przed jego wydaniem.",
+            "C": (
+                "Testowanie to zbiór działań obejmujących wykrywanie defektów, ocenę jakości, weryfikację i walidację, "
+                "wykonywanych zarówno dynamicznie, jak i statycznie."
+            ),
+            "D": (
+                "Testowanie to proces wykonywany dopiero po zakończeniu prac programistycznych, mający na celu "
+                "ostateczną kontrolę produktu."
+            ),
+        },
+        "correct": "C",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Ogranicza testowanie wyłącznie do dynamicznego uruchamiania oprogramowania "
+                "i potwierdzania zgodności z wymaganiami. Brakuje w niej aspektów statycznych (przeglądy, analiza), "
+                "oceny jakości artefaktów oraz działań takich jak planowanie i monitorowanie."
+            ),
+            "B": (
+                "Odpowiedź niepoprawna. Znajdowanie defektów jest jednym z celów testowania, ale nie jedynym. "
+                "Testowanie obejmuje również ocenę jakości, zapobieganie defektom, weryfikację i walidację, "
+                "a także działania organizacyjne i analityczne."
+            ),
+            "C": (
+                "Odpowiedź poprawna. Najlepiej odzwierciedla definicję testowania: jest to zbiór działań, które obejmują "
+                "wykrywanie defektów, ocenę jakości produktów pracy, weryfikację i walidację, a także podejście "
+                "dynamiczne (uruchamianie oprogramowania) i statyczne (np. przeglądy). Wpisuje się to w podejście ISTQB, "
+                "gdzie testowanie to nie tylko samo „klikanie”, ale cały proces wspierający jakość."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Przedstawia przestarzałe, wąskie rozumienie testowania jako aktywności "
+                "wykonywanej dopiero po zakończeniu programowania. Zgodnie z ISTQB, planowanie testów rozpoczyna się "
+                "wcześnie, a testowanie (w tym statyczne) może być prowadzone na wielu artefaktach przed implementacją."
+            ),
+        },
+    },
+    # ===== PYTANIE 35 – Weryfikacja vs walidacja =====
+    {
+        "id": 35,
+        "text": (
+            "Zespół pracuje nad systemem do rezerwacji biletów kolejowych. Podczas przeglądu dokumentu z wymaganiami "
+            "analityk i tester zauważają, że opis funkcji płatności jest niejednoznaczny i może prowadzić do błędnej "
+            "interpretacji. Zespół przeprowadza korektę wymagań jeszcze przed rozpoczęciem implementacji.\n\n"
+            "Która czynność została wykonana?"
+        ),
+        "options": {
+            "A": "Walidacja, ponieważ sprawdzono, czy system spełni potrzeby użytkowników",
+            "B": "Weryfikacja, ponieważ sprawdzono jakość dokumentu przed implementacją",
+            "C": "Testowanie dynamiczne",
+            "D": "Testowanie akceptacyjne",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Walidacja odpowiada na pytanie: „Czy zbudowaliśmy właściwy system?” "
+                "i dotyczy sprawdzania, czy system spełnia potrzeby użytkownika – zwykle na działającym oprogramowaniu "
+                "(np. testy akceptacyjne). W scenariuszu mamy przegląd dokumentu wymagań przed implementacją, "
+                "czyli klasyczną weryfikację, a nie walidację."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Weryfikacja odpowiada na pytanie: „Czy zbudujemy system poprawnie?”. "
+                "Polega na sprawdzaniu jakości artefaktów (np. wymagań, projektów) jeszcze przed implementacją. "
+                "Przegląd dokumentu wymagań i usunięcie niejednoznaczności to typowy przykład weryfikacji statycznej."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Testowanie dynamiczne wymaga uruchamiania oprogramowania lub jego fragmentów "
+                "i obserwowania zachowania systemu przy wykonywaniu kodu. W opisie nie ma żadnego uruchamiania systemu – "
+                "mamy wyłącznie pracę z dokumentem, więc jest to testowanie statyczne (weryfikacja), a nie dynamiczne."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testy akceptacyjne są zwykle wykonywane na działającym systemie, aby sprawdzić, "
+                "czy spełnia on potrzeby i oczekiwania użytkowników. W przedstawionej sytuacji system nie został jeszcze "
+                "zaimplementowany – zespół pracuje jedynie nad wymaganiami. To nie jest testowanie akceptacyjne, lecz "
+                "weryfikacja dokumentu wymagań."
+            ),
+        },
+    },
+    # ===== PYTANIE 36 – Ryzyko produktu vs ryzyko projektu =====
+    {
+        "id": 36,
+        "text": (
+            "Zespół testowy analizuje ryzyka związane z nowym systemem do rozliczeń podatkowych.\n\n"
+            "Rozważa dwa stwierdzenia:\n\n"
+            "1) Istnieje ryzyko, że błędnie zaimplementowane algorytmy podatkowe spowodują niepoprawne obliczenia "
+            "   w raportach dla użytkowników końcowych.\n"
+            "2) Istnieje ryzyko, że moduł odpowiedzialny za generowanie raportów nie zostanie dostarczony na czas, "
+            "   co może opóźnić rozpoczęcie testów systemowych.\n\n"
+            "Jak NAJLEPIEJ sklasyfikować te dwa ryzyka zgodnie z podejściem ISTQB?"
+        ),
+        "options": {
+            "A": "1 – ryzyko projektu, 2 – ryzyko produktu",
+            "B": "1 – ryzyko produktu, 2 – ryzyko projektu",
+            "C": "1 i 2 są ryzykiem produktu",
+            "D": "1 i 2 są ryzykiem projektu",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Odwraca klasyfikację ryzyk:\n"
+                "• W pkt 1 mowa o błędnych obliczeniach podatkowych w raportach – to wpływa na jakość działania systemu, "
+                "czyli jest ryzykiem PRODUKTU.\n"
+                "• W pkt 2 chodzi o możliwe opóźnienie dostarczenia modułu i rozpoczęcia testów – to wpływa na harmonogram "
+                "i organizację prac, czyli jest ryzykiem PROJEKTU.\n"
+                "Odpowiedź A zamienia te pojęcia miejscami, więc jest sprzeczna z definicjami ISTQB."
+            ),
+            "B": (
+                "Odpowiedź poprawna.\n\n"
+                "• Pkt 1 – błędne obliczenia podatkowe w raportach to ryzyko jakości systemu (błędne wyniki, defekty "
+                "w logice biznesowej). To klasyczne RYZYKO PRODUKTU.\n"
+                "• Pkt 2 – opóźnienie dostarczenia modułu raportów wpływa na harmonogram, terminy, koszty i możliwość "
+                "rozpoczęcia testów – to typowe RYZYKO PROJEKTU.\n\n"
+                "Zgodnie z ISTQB: ryzyko produktu dotyczy jakości rozwiązania, a ryzyko projektu – organizacji i przebiegu prac."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Tylko pkt 1 jest ryzykiem produktu.\n"
+                "Pkt 2 dotyczy opóźnienia dostarczenia modułu i rozpoczęcia testów, czyli wpływa na harmonogram projektu, "
+                "a nie bezpośrednio na jakość działania systemu. To ryzyko PROJEKTU, nie produktu."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Tylko pkt 2 jest ryzykiem projektu.\n"
+                "W pkt 1 problemem są błędne obliczenia w raportach – to bezpośrednio dotyczy jakości systemu i jego wyników, "
+                "czyli jest to ryzyko PRODUKTU, a nie projektu. Ryzyka jakościowe nie są klasyfikowane jako ryzyka projektu."
+            ),
+        },
+    },
+    # ===== PYTANIE 37 – Testowanie regresyjne =====
+    {
+        "id": 37,
+        "text": (
+            "W systemie bankowym wdrożono poprawkę błędu, który powodował niepoprawne zaokrąglanie kwot przelewów "
+            "w walutach obcych. Po wdrożeniu tej poprawki tester musi zaplanować dodatkową sesję testów.\n\n"
+            "Która z poniższych czynności jest NAJBARDZIEJ typowa dla testowania regresyjnego?"
+        ),
+        "options": {
+            "A": "Wykonanie tylko testu, który sprawdza konkretną poprawioną funkcję",
+            "B": "Wykonanie testów sprawdzających, czy zmiana nie wpłynęła negatywnie na inne obszary systemu",
+            "C": "Wykonanie testów funkcjonalnych dotyczących zupełnie nowych modułów",
+            "D": "Wykonanie testów wyłącznie na środowisku produkcyjnym",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Jest to RETEST, czyli ponowne sprawdzenie poprawionego defektu. "
+                "Retest dotyczy wyłącznie funkcji, w której wystąpił błąd, a nie całego systemu."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Testowanie regresyjne polega na sprawdzeniu, czy wprowadzone zmiany "
+                "nie wpłynęły negatywnie na inne, wcześniej działające obszary systemu. To klasyczna definicja regresji."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Regresja nie obejmuje nowych modułów, lecz funkcje istniejące, "
+                "mogące zostać nieumyślnie naruszone przez zmianę."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testów regresji nie wykonuje się na produkcji. "
+                "Powinny być wykonywane na środowiskach testowych (QA/UAT)."
+            ),
+        },
+    },
+    # ===== PYTANIE 38 – Testowanie pielęgnacyjne =====
+    {
+        "id": 38,
+        "text": (
+            "System fakturowy używany przez firmę od 8 lat wymaga aktualizacji z powodu zmiany przepisów podatkowych. "
+            "Podczas wdrażania aktualizacji zidentyfikowano również kilka defektów wynikających z długoletniej eksploatacji. "
+            "Testerzy muszą zaplanować zakres testów pielęgnacyjnych.\n\n"
+            "Która sytuacja NAJLEPIEJ opisuje testowanie pielęgnacyjne zgodnie z ISTQB?"
+        ),
+        "options": {
+            "A": "Testy wykonywane tylko podczas pierwszego wdrożenia systemu",
+            "B": "Testy wykonywane po wprowadzeniu zmian, aktualizacji lub napraw w systemie",
+            "C": "Testy wykonywane wyłącznie wtedy, gdy zakończono wszystkie iteracje projektowe",
+            "D": "Testy wykonywane tylko dla nowych funkcji systemu",
+        },
+        "correct": "B",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. Testowanie pielęgnacyjne dotyczy testów wykonywanych "
+                "PO wdrożeniu systemu, a nie podczas pierwszej instalacji."
+            ),
+            "B": (
+                "Odpowiedź poprawna. Testowanie pielęgnacyjne obejmuje testy wykonywane po zmianach, "
+                "aktualizacjach, poprawkach, dostosowaniach do nowych przepisów czy warunków działania."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Testy pielęgnacyjne nie są powiązane z iteracjami projektowymi — "
+                "wykonuje się je zawsze, gdy system po wdrożeniu ulega zmianom."
+            ),
+            "D": (
+                "Odpowiedź niepoprawna. Testy pielęgnacyjne obejmują nie tylko nowe funkcje, "
+                "ale także naprawę defektów, dostosowania, zmiany środowiska i regresję."
+            ),
+        },
+    },
+    # ===== PYTANIE 39 – Klasy równoważności (wiek, film 18+) =====
+    {
+        "id": 39,
+        "text": (
+            "System sprzedaży biletów do kina weryfikuje wiek widza przy zakupie biletu na film „18+”.\n"
+            "Warunki:\n\n"
+            "- Minimalny wiek: 18 lat\n"
+            "- Wiek musi być liczbą całkowitą\n"
+            "- Jeśli wiek < 18 → zakup zablokowany\n"
+            "- Jeśli wiek ≥ 18 → zakup dozwolony\n\n"
+            "Który z poniższych klientów należy do niepoprawnej klasy równoważności "
+            "(wniosek zostanie odrzucony)?"
+        ),
+        "options": {
+            "A": "Adam, 18 lat",
+            "B": "Monika, 17 lat",
+            "C": "Karol, 25 lat",
+            "D": "Tomasz, 19.5 roku",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna. 18 lat to minimalny dopuszczalny wiek — poprawna wartość."
+            ),
+            "B": (
+                "Odpowiedź częściowo poprawna jako klasa niepoprawna (wiek < 18), ale pytanie "
+                "dotyczy 'najbardziej niepoprawnej' klasy równoważności. Monika nie narusza "
+                "formatu danych — tylko wartość zakresu."
+            ),
+            "C": (
+                "Odpowiedź niepoprawna. Wiek 25 lat jest poprawny i spełnia wymagania."
+            ),
+            "D": (
+                "Odpowiedź poprawna. Wiek musi być liczbą całkowitą. Wartość 19.5 narusza format "
+                "danych wejściowych, co jest najbardziej fundamentalną niepoprawną klasą równoważności."
+            ),
+        },
+    },
+    # ===== PYTANIE 40 – Klasy równoważności (wypożyczalnia samochodów) =====
+    {
+        "id": 40,
+        "text": (
+            "System wypożyczalni samochodów pozwala wynająć auto, jeśli spełnione są wszystkie warunki:\n"
+            "- Wiek kierowcy: 21–75 lat (włącznie)\n"
+            "- Staż jazdy: minimum 3 lata\n"
+            "- Staż jazdy musi być liczbą całkowitą\n"
+            "- Posiadanie prawa jazdy kategorii B\n"
+            "- Limit kilometrów: 100 km, 200 km, 500 km, „bez limitu”\n\n"
+            "Który klient należy do niepoprawnej klasy równoważności i NIE będzie mógł wypożyczyć auta?"
+        ),
+        "options": {
+            "A": "Paweł, 22 lata, staż 1 rok, kat. B, limit 200 km",
+            "B": "Natalia, 30 lat, staż 5 lat, kat. B, limit 100 km",
+            "C": "Marek, 75 lat, staż 20 lat, kat. B, limit „bez limitu”",
+            "D": "Klaudia, 40 lat, staż 7.5 roku, kat. B, limit 500 km",
+        },
+        "correct": "D",
+        "explanations": {
+            "A": (
+                "Odpowiedź niepoprawna jako klasa formatowa — błąd dotyczy wartości (staż < 3 lata), "
+                "ale staż jest liczbą całkowitą, więc format jest poprawny. "
+                "Jest to niepoprawna wartość, ale nie najgorsza klasa równoważności."
+            ),
+            "B": (
+                "Odpowiedź poprawna (w sensie dopuszczalności). Wszystkie warunki są spełnione."
+            ),
+            "C": (
+                "Odpowiedź poprawna. Wiek 75 lat mieści się w dopuszczalnym zakresie. Staż i dane są poprawne."
+            ),
+            "D": (
+                "Odpowiedź poprawna (jako niepoprawna klasa równoważności). Staż jazdy nie jest liczbą całkowitą — "
+                "narusza to podstawowy warunek formatowy. Dane wejściowe są nieprzetwarzalne, co czyni tę wartość "
+                "najbardziej niepoprawną klasą równoważności zgodnie z ISTQB."
+            ),
+        },
+    },
+
+    # tutaj będziemy dopisywać kolejne pytania egzaminu 2
+]
+
+
+# =========================================
+# DEFINICJA EGZAMINÓW
+# =========================================
+
+EXAMS = {
+    1: {
+        "name": "Egzamin próbny ISTQB – zestaw 1",
+        "questions": QUESTIONS_EXAM1,
+    },
+    2: {
+        "name": "Egzamin próbny ISTQB – zestaw 2",
+        "questions": QUESTIONS_EXAM2,
+    },
+}
+
+# =========================================
+# SZABLONY HTML
+# =========================================
+
+HTML_INDEX = """
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <title>ISTQB – Egzaminy online</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-dark bg-dark mb-4">
+  <div class="container">
+    <span class="navbar-brand">ISTQB – Egzaminy online</span>
+  </div>
+</nav>
+
+<div class="container mb-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+      <div class="card shadow-sm p-4 p-md-5">
+        <h1 class="mb-3">Wybierz egzamin</h1>
+        <p class="lead">
+          Masz <strong>60 minut</strong> na każdy egzamin. Próg zdania: <strong>{{ pass_threshold }}%</strong>.
+        </p>
+
+        <div class="row g-4 mt-3">
+          <div class="col-md-6">
+            <div class="card h-100 border-primary">
+              <div class="card-body d-flex flex-column">
+                <h4 class="card-title text-primary">Egzamin 1</h4>
+                <p class="card-text mb-2">
+                  {{ exam1_name }}<br>
+                  Liczba pytań: <strong>{{ exam1_total }}</strong>
+                </p>
+                <p class="text-muted small mb-4">
+                  Zawiera pytania jednokrotnego oraz wielokrotnego wyboru,
+                  pełne uzasadnienia odpowiedzi oraz kolorowe karty wyników.
+                </p>
+                <a href="{{ url_for('exam_start', exam_id=1) }}" class="btn btn-primary mt-auto">
+                  Rozpocznij egzamin 1
+                </a>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-md-6">
+            <div class="card h-100 border-success">
+              <div class="card-body d-flex flex-column">
+                <h4 class="card-title text-success">Egzamin 2</h4>
+                <p class="card-text mb-2">
+                  {{ exam2_name }}<br>
+                  Liczba pytań: <strong>{{ exam2_total }}</strong>
+                </p>
+                <p class="text-muted small mb-4">
+                  Drugi zestaw pytań – ten sam system oceniania, limit czasu
+                  i widok wyników. Idealny do powtórek.
+                </p>
+                <a href="{{ url_for('exam_start', exam_id=2) }}" class="btn btn-success mt-auto">
+                  Rozpocznij egzamin 2
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <hr class="my-4">
+        <p class="text-muted small mb-0">
+          Po zakończeniu egzaminu zobaczysz:
+          <ul>
+            <li>procentowy wynik i informację, czy egzamin został <strong>zdany</strong>,</li>
+            <li>zielone / czerwone karty dla każdego pytania,</li>
+            <li>pełne uzasadnienia odpowiedzi A–D/E.</li>
+          </ul>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
+"""
+
+HTML_QUESTION = """
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <title>{{ exam_name }} – pytanie {{ pos }} / {{ total }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet">
+    <style>
+      .timer-badge {
+        font-size: 1rem;
+      }
+    </style>
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-dark bg-dark mb-4">
+  <div class="container d-flex justify-content-between">
+    <a class="navbar-brand" href="{{ url_for('index') }}">ISTQB – Egzaminy</a>
+    <span class="navbar-text text-light">
+      Egzamin {{ exam_id }} – pytanie {{ pos }} z {{ total }}
+    </span>
+  </div>
+</nav>
+
+<div class="container mb-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-8">
+      <div class="card shadow-sm p-4 p-md-5">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h3 class="mb-0">Pytanie {{ pos }} z {{ total }}</h3>
+          <span class="badge bg-dark timer-badge">
+            Pozostały czas:
+            <span id="timer">--:--</span>
+          </span>
+        </div>
+
+        <form method="post" action="{{ url_for('exam_question', exam_id=exam_id, pos=pos) }}">
+          <p class="mb-3">{{ question.text|replace('\\n', '<br>')|safe }}</p>
+
+          {% if is_multi %}
+            <p class="text-muted"><em>Pytanie wielokrotnego wyboru – zaznacz wszystkie poprawne odpowiedzi.</em></p>
+          {% endif %}
+
+          <div class="mt-3">
+          {% for key, text in question.options.items() %}
+            <div class="form-check mb-2">
+              <input class="form-check-input"
+                     type="{{ 'checkbox' if is_multi else 'radio' }}"
+                     name="answer"
+                     id="opt{{ key }}"
+                     value="{{ key }}"
+                     {% if key in selected_values %}checked{% endif %}>
+              <label class="form-check-label" for="opt{{ key }}">
+                <strong>{{ key }}.</strong> {{ text|replace('\\n', '<br>')|safe }}
+              </label>
+            </div>
+          {% endfor %}
+          </div>
+
+          <div class="d-flex justify-content-between mt-4">
+            <button type="submit"
+                    name="prev"
+                    value="1"
+                    class="btn btn-outline-secondary"
+                    {% if pos == 1 %}disabled{% endif %}>
+              ← Poprzednie
+            </button>
+
+            <div>
+              {% if pos < total %}
+                <button type="submit"
+                        name="next"
+                        value="1"
+                        class="btn btn-primary">
+                  Następne →
+                </button>
+              {% endif %}
+              <button type="submit"
+                      name="finish"
+                      value="1"
+                      class="btn btn-danger ms-2">
+                Zakończ egzamin
+              </button>
+            </div>
+          </div>
+        </form>
+
+        <p class="text-muted small mt-3 mb-0">
+          Uwaga: Twoje odpowiedzi są zapisywane przy każdym kliknięciu
+          <strong>Poprzednie</strong>, <strong>Następne</strong> lub <strong>Zakończ egzamin</strong>.
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  let remaining = {{ remaining_seconds }};
+  function updateTimer() {
+    const el = document.getElementById("timer");
+    if (!el) return;
+    const m = Math.floor(remaining / 60);
+    const s = remaining % 60;
+    el.textContent = String(m).padStart(2, '0') + ":" + String(s).padStart(2, '0');
+    if (remaining <= 0) {
+      // Czas się skończył – przejście do wyniku
+      window.location.href = "{{ url_for('exam_result', exam_id=exam_id) }}";
+    } else {
+      remaining -= 1;
+      setTimeout(updateTimer, 1000);
+    }
+  }
+  window.addEventListener('load', updateTimer);
+</script>
+</body>
+</html>
+"""
+
+HTML_RESULT = """
+<!doctype html>
+<html lang="pl">
+<head>
+    <meta charset="utf-8">
+    <title>Wynik – {{ exam_name }}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css"
+      rel="stylesheet">
+</head>
+<body class="bg-light">
+<nav class="navbar navbar-dark bg-dark mb-4">
+  <div class="container d-flex justify-content-between">
+    <a class="navbar-brand" href="{{ url_for('index') }}">ISTQB – Egzaminy</a>
+    <span class="navbar-text text-light">
+      {{ exam_name }}
+    </span>
+  </div>
+</nav>
+
+<div class="container mb-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-10">
+      <div class="card shadow-sm p-4 p-md-5">
+        <h2 class="mb-3">Wynik egzaminu</h2>
+        <p class="lead">
+          Twój wynik: <strong>{{ score }}</strong> / {{ total }} ({{ percent }}%)
+        </p>
+
+        {% if passed %}
+          <div class="alert alert-success">
+            ✅ Gratulacje! <strong>Egzamin ZDANY.</strong><br>
+            Próg zaliczenia: {{ pass_threshold }}%.
+          </div>
+        {% else %}
+          <div class="alert alert-danger">
+            ❌ Niestety <strong>egzamin NIEZDANY.</strong><br>
+            Wymagany próg zaliczenia: {{ pass_threshold }}%.
+          </div>
+        {% endif %}
+
+        <hr class="my-4">
+        <h4>Szczegóły pytań i uzasadnienia</h4>
+
+        {% for d in details %}
+          <div class="card mb-3 border-{{ 'success' if d.is_correct else 'danger' }} shadow-sm">
+            <div class="card-header text-white bg-{{ 'success' if d.is_correct else 'danger' }}">
+              <div class="d-flex justify-content-between align-items-center">
+                <span>Pytanie {{ loop.index }}</span>
+                {% if d.is_correct %}
+                  <span class="badge bg-light text-success">DOBRZE ✅</span>
+                {% else %}
+                  <span class="badge bg-light text-danger">ŹLE ❌</span>
+                {% endif %}
+              </div>
+            </div>
+            <div class="card-body">
+              <p class="mb-2">{{ d.question|replace('\\n', '<br>')|safe }}</p>
+
+              {% if d.is_multi %}
+                <p class="mb-1">
+                  Twoje odpowiedzi:
+                  {% if d.user_selected %}
+                    {% for ans in d.user_selected %}
+                      <span class="badge rounded-pill bg-{{ 'success' if ans in d.correct_multiple else 'secondary' }} me-1">
+                        {{ ans }}
+                      </span>
+                    {% endfor %}
+                  {% else %}
+                    <span class="text-muted">brak</span>
+                  {% endif %}
+                </p>
+                <p class="mb-2">
+                  Poprawne odpowiedzi:
+                  {% for ans in d.correct_multiple %}
+                    <span class="badge rounded-pill bg-success me-1">{{ ans }}</span>
+                  {% endfor %}
+                </p>
+              {% else %}
+                <p class="mb-1">
+                  Twoja odpowiedź:
+                  {% if d.user_selected %}
+                    {% set ua = d.user_selected[0] %}
+                    <span class="badge rounded-pill bg-{{ 'success' if ua == d.correct else 'secondary' }}">
+                      {{ ua }}
+                    </span>
+                  {% else %}
+                    <span class="text-muted">brak</span>
+                  {% endif %}
+                </p>
+                <p class="mb-2">
+                  Poprawna odpowiedź:
+                  <span class="badge rounded-pill bg-success">{{ d.correct }}</span>
+                </p>
+              {% endif %}
+
+              <div class="mt-3">
+                <p class="mb-1"><strong>Uzasadnienia odpowiedzi:</strong></p>
+                <ul class="list-group">
+                  {% for key, text in d.explanations.items() %}
+                    {% set is_correct_opt = (key == d.correct) or (d.is_multi and key in d.correct_multiple) %}
+                    <li class="list-group-item d-flex">
+                      <div class="me-2">
+                        <span class="badge rounded-pill bg-{{ 'success' if is_correct_opt else 'secondary' }}">
+                          {{ key }}
+                        </span>
+                      </div>
+                      <div>
+                        {{ text }}
+                      </div>
+                    </li>
+                  {% endfor %}
+                </ul>
+              </div>
+            </div>
+          </div>
+        {% endfor %}
+
+        <div class="d-flex justify-content-between mt-4">
+          <a href="{{ url_for('exam_start', exam_id=exam_id) }}" class="btn btn-primary">
+            Rozwiąż ten egzamin ponownie
+          </a>
+          <a href="{{ url_for('index') }}" class="btn btn-outline-secondary">
+            Powrót do wyboru egzaminu
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
+"""
+
+
+# =========================================
+# ROUTES
+# =========================================
+
+@app.route("/")
+def index():
+    exam1 = EXAMS[1]
+    exam2 = EXAMS[2]
+    return render_template_string(
+        HTML_INDEX,
+        pass_threshold=PASS_THRESHOLD,
+        exam1_name=exam1["name"],
+        exam2_name=exam2["name"],
+        exam1_total=len(exam1["questions"]),
+        exam2_total=len(exam2["questions"]),
+    )
+
+
+@app.route("/exam/<int:exam_id>")
+def exam_start(exam_id):
+    exam = EXAMS.get(exam_id)
+    if not exam:
+        abort(404)
+    # start egzaminu
+    session[f"start_time_{exam_id}"] = int(time.time())
+    session[f"answers_{exam_id}"] = {}
+    return redirect(url_for("exam_question", exam_id=exam_id, pos=1))
+
+
+@app.route("/exam/<int:exam_id>/q/<int:pos>", methods=["GET", "POST"])
+def exam_question(exam_id, pos):
+    exam = EXAMS.get(exam_id)
+    if not exam:
+        abort(404)
+
+    questions = exam["questions"]
+    total = len(questions)
+    if total == 0:
+        abort(404)
+
+    if pos < 1 or pos > total:
+        abort(404)
+
+    answers = session.get(f"answers_{exam_id}", {})
+    start_time = session.get(f"start_time_{exam_id}")
+    if start_time is None:
+        # jeśli ktoś wszedł bez poprawnego startu – zainicjuj
+        start_time = int(time.time())
+        session[f"start_time_{exam_id}"] = start_time
+
+    now = int(time.time())
+    elapsed = now - start_time
+    remaining = EXAM_DURATION_SECONDS - elapsed
+    if remaining <= 0:
+        # czas minął – wynik
+        return redirect(url_for("exam_result", exam_id=exam_id))
+
+    question = questions[pos - 1]
+    is_multi = "correct_multiple" in question
+
+    # obsługa POST – zapis odpowiedzi i nawigacja
+    if request.method == "POST":
+        if is_multi:
+            selected = request.form.getlist("answer")
+            answers[str(question["id"])] = selected
+        else:
+            selected = request.form.get("answer")
+            answers[str(question["id"])] = selected if selected else None
+
+        session[f"answers_{exam_id}"] = answers
+
+        if "prev" in request.form:
+            new_pos = max(1, pos - 1)
+            return redirect(url_for("exam_question", exam_id=exam_id, pos=new_pos))
+        elif "next" in request.form:
+            new_pos = min(total, pos + 1)
+            return redirect(url_for("exam_question", exam_id=exam_id, pos=new_pos))
+        elif "finish" in request.form:
+            return redirect(url_for("exam_result", exam_id=exam_id))
+
+    # odczyt zaznaczonych odpowiedzi do pre-selekcji
+    stored = answers.get(str(question["id"]))
+    if isinstance(stored, list):
+        selected_values = stored
+    elif stored is None:
+        selected_values = []
+    else:
+        selected_values = [stored]
+
+    return render_template_string(
+        HTML_QUESTION,
+        exam_id=exam_id,
+        exam_name=exam["name"],
+        pos=pos,
+        total=total,
+        question=question,
+        is_multi=is_multi,
+        selected_values=selected_values,
+        remaining_seconds=remaining,
+    )
+
+
+@app.route("/exam/<int:exam_id>/result")
+def exam_result(exam_id):
+    exam = EXAMS.get(exam_id)
+    if not exam:
+        abort(404)
+
+    questions = exam["questions"]
+    answers = session.get(f"answers_{exam_id}", {})
+
+    score = 0
+    details = []
+
+    for q in questions:
+        qid = str(q["id"])
+        is_multi = "correct_multiple" in q
+
+        if is_multi:
+            correct_list = q["correct_multiple"]
+            user_list = answers.get(qid, []) or []
+            if not isinstance(user_list, list):
+                user_list = [user_list] if user_list else []
+            is_correct = set(user_list) == set(correct_list)
+            if is_correct:
+                score += 1
+            details.append({
+                "question": q["text"],
+                "is_multi": True,
+                "user_selected": user_list,
+                "correct": None,
+                "correct_multiple": correct_list,
+                "is_correct": is_correct,
+                "explanations": q["explanations"],
+            })
+        else:
+            correct = q["correct"]
+            user_answer = answers.get(qid)
+            is_correct = (user_answer == correct)
+            if is_correct:
+                score += 1
+            user_list = [user_answer] if user_answer else []
+            details.append({
+                "question": q["text"],
+                "is_multi": False,
+                "user_selected": user_list,
+                "correct": correct,
+                "correct_multiple": [],
+                "is_correct": is_correct,
+                "explanations": q["explanations"],
+            })
+
+    total = len(questions)
+    percent = round(score / total * 100) if total > 0 else 0
+    passed = percent >= PASS_THRESHOLD
+
+    return render_template_string(
+        HTML_RESULT,
+        exam_id=exam_id,
+        exam_name=exam["name"],
+        score=score,
+        total=total,
+        percent=percent,
+        passed=passed,
+        pass_threshold=PASS_THRESHOLD,
+        details=details,
+    )
+
+
+if __name__ == "__main__":
+    print(app.url_map)
+    app.run(debug=True)
